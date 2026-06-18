@@ -114,6 +114,7 @@ export function buildTruck(spec) {
     for (const x of [1.02, 1.42, -1.02, -1.42]) wheels.push({ pos: [x, r, z], radius: r });
   }
 
+  body.planarUV(3.2); // wrap the procedural paint/panel texture over the whole rig
   return {
     body,
     wheels,
@@ -147,8 +148,9 @@ function cylZAt(r, len, color, x, y, z) {
 
 export function buildBuilding(w, h, d, color) {
   const g = new Geometry();
+  const wG = new Geometry(); // windows drawn separately so they glow at night
   const dark = [color[0] * 0.7, color[1] * 0.7, color[2] * 0.75];
-  const win = [0.30, 0.40, 0.55];
+  const win = [1, 1, 1];
 
   // main mass + darker ground floor + roof parapet cap
   g.merge(box(w, h, d, color, [0, h / 2, 0]));
@@ -160,10 +162,10 @@ export function buildBuilding(w, h, d, color) {
   for (let f = 0; f < floors; f++) {
     const y = 3.0 + f * 3.2;
     if (y > h - 1.2) break;
-    g.merge(box(w * 0.84, 1.3, 0.08, win, [0, y, d / 2 + 0.03]));
-    g.merge(box(w * 0.84, 1.3, 0.08, win, [0, y, -d / 2 - 0.03]));
-    g.merge(box(0.08, 1.3, d * 0.84, win, [w / 2 + 0.03, y, 0]));
-    g.merge(box(0.08, 1.3, d * 0.84, win, [-w / 2 - 0.03, y, 0]));
+    wG.merge(box(w * 0.84, 1.3, 0.06, win, [0, y, d / 2 + 0.05]));
+    wG.merge(box(w * 0.84, 1.3, 0.06, win, [0, y, -d / 2 - 0.05]));
+    wG.merge(box(0.06, 1.3, d * 0.84, win, [w / 2 + 0.05, y, 0]));
+    wG.merge(box(0.06, 1.3, d * 0.84, win, [-w / 2 - 0.05, y, 0]));
   }
 
   // rooftop details (India flavour): water tank on legs + AC units
@@ -175,7 +177,7 @@ export function buildBuilding(w, h, d, color) {
   g.merge(box(1.4, 0.7, 1.0, [0.7, 0.7, 0.74], [-w * 0.25, rt + 0.35, -d * 0.2])); // AC/box
   g.merge(box(0.9, 0.5, 0.9, [0.6, 0.6, 0.64], [-w * 0.05, rt + 0.25, d * 0.28]));
 
-  return g;
+  return { body: g, windows: wG };
 }
 
 export function buildTree() {

@@ -6,8 +6,9 @@ import { buildTruck, buildWheel } from "./models.js";
 const KMH_PER_MS = 3.6;
 
 export class Truck {
-  constructor(gl, truckDef, stats) {
+  constructor(gl, truckDef, stats, tex) {
     this.gl = gl;
+    this.tex = tex || null;
     this.setTruck(gl, truckDef);
     this.applyStats(stats);
     this.reset([0, 0, 0], 0);
@@ -18,6 +19,7 @@ export class Truck {
     if (cabOverride) colors.cab = cabOverride;
     const model = buildTruck(colors);
     this.bodyMesh = new Mesh(gl, model.body);
+    this.bodyMesh.texture = (this.tex && this.tex.truckPaint) || null;
     this.wheelMesh = new Mesh(gl, buildWheel(model.wheelRadius));
     this.wheels = model.wheels;
     this.dims = model.dims;

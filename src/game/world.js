@@ -23,6 +23,7 @@ export class World {
     this.map = map;
     this.tex = tex || {};
     this.staticMeshes = [];   // drawn with identity transform
+    this.windowMeshes = [];   // building windows (glow at night)
     this.instanced = [];      // { mesh, instances:[{x,y,z,rot,scale}] }
     this.obstacles = [];      // { x, z, hw, hd } AABB (top-down)
     this.fuelZones = [];      // { x, z, r }
@@ -40,6 +41,12 @@ export class World {
     if (geo.indices.length === 0) return null;
     const m = new Mesh(this.gl, geo);
     this.staticMeshes.push(m);
+    return new Geometry();
+  }
+
+  _flushWin(geo) {
+    if (geo.indices.length === 0) return new Geometry();
+    this.windowMeshes.push(new Mesh(this.gl, geo));
     return new Geometry();
   }
 
@@ -137,6 +144,7 @@ export class World {
     ];
     const parkCenter = [90, -90];
     this.parkCenter = parkCenter;
+    let winGeo = new Geometry();
     for (let cx = -extent + b / 2; cx < extent; cx += b) {
       for (let cz = -extent + b / 2; cz < extent; cz += b) {
         if (Math.hypot(cx - parkCenter[0], cz - parkCenter[1]) < 1) continue; // leave park block empty
@@ -151,13 +159,18 @@ export class World {
           if (this.isOnRoad(ox, oz)) continue;
           if (Math.hypot(ox - this.spawn[0], oz - this.spawn[2]) < 24) continue;
           const color = palette[Math.floor(rng() * palette.length)];
-          bGeo.merge(buildBuilding(w, h, d, color), translation(ox, 0.18, oz));
+          const parts = buildBuilding(w, h, d, color);
+          const tr = translation(ox, 0.18, oz);
+          bGeo.merge(parts.body, tr);
+          winGeo.merge(parts.windows, tr);
           this.obstacles.push({ x: ox, z: oz, hw: w / 2, hd: d / 2 });
           if (bGeo.positions.length / 3 > VERT_LIMIT) bGeo = this._flush(bGeo);
+          if (winGeo.positions.length / 3 > VERT_LIMIT) winGeo = this._flushWin(winGeo);
         }
       }
     }
     this._flush(bGeo);
+    this._flushWin(winGeo);
 
     // --- Water: park pond + riverfront beyond the western border (visual) ---
     const waterGeo = new Geometry();

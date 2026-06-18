@@ -72,10 +72,31 @@ function shadowCanvas() {
   return c;
 }
 
+function truckPaintCanvas() {
+  const size = 256;
+  const c = makeCanvas(size);
+  try {
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#e6e6e6"; ctx.fillRect(0, 0, size, size);       // bright base (keeps paint colour)
+    noise(ctx, size, 1400, 0.18, [[210, 210, 210], [235, 235, 235], [195, 195, 200]]); // brushed metal
+    // horizontal panel lines
+    ctx.strokeStyle = "rgba(120,120,128,0.5)"; ctx.lineWidth = 1.5;
+    for (let y = 16; y < size; y += 34) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(size, y); ctx.stroke(); }
+    // a few vertical seams
+    ctx.strokeStyle = "rgba(120,120,128,0.3)";
+    for (let x = 48; x < size; x += 84) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, size); ctx.stroke(); }
+    // rivets
+    ctx.fillStyle = "rgba(90,90,98,0.5)";
+    for (let y = 16; y < size; y += 34) for (let x = 8; x < size; x += 28) ctx.fillRect(x, y - 1, 2, 2);
+  } catch (e) {}
+  return c;
+}
+
 export function makeTextures(renderer) {
   return {
     ground: renderer.createTexture(groundCanvas()),
     asphalt: renderer.createTexture(asphaltCanvas()),
     shadow: renderer.createTexture(shadowCanvas()),
+    truckPaint: renderer.createTexture(truckPaintCanvas()),
   };
 }

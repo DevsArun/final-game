@@ -61,7 +61,7 @@ void main() {
 
   if (uUnlit > 0.5) {
     float fogU = clamp((vFogDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0) * uFogScale;
-    gl_FragColor = vec4(mix(base, uFogColor, fogU * 0.0), uAlpha * tex.a);
+    gl_FragColor = vec4(mix(base, uFogColor, fogU), uAlpha * tex.a);
     return;
   }
 

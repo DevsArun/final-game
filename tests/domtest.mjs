@@ -148,6 +148,14 @@ game.env.setWeather("fog");
 game.env.apply(game.renderer);
 console.log("  ✓ environment: rain/fog apply + overlay clean");
 
+// night-glow windows + minimap + engine sound + job types
+assert.ok(game.world.windowMeshes.length > 0, "building window meshes built (night glow)");
+game.hud.drawMinimap(game.world, game.truck.pos, game.truck.heading, [50, 0, 50]);
+game.sfx.startEngine(); game.sfx.setEngine(0.5, 1); game.sfx.stopEngine();
+const jt = game.mission.generateOffer(game.profile);
+assert.ok(jt.type && jt.type.id, "job has a variety type (" + jt.type.id + ")");
+console.log(`  ✓ Phase A/B: ${game.world.windowMeshes.length} window meshes, minimap+engine clean, job type=${jt.type.id}`);
+
 // engine smoke when damaged
 game.state = 2;
 game.health = game.maxHealth * 0.2;

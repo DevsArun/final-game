@@ -6,6 +6,20 @@ const CARGO_TYPES = [
   "Livestock Feed", "Construction Gear", "Frozen Goods", "Textiles", "Machinery",
 ];
 
+const JOB_TYPES = [
+  { id: "standard", label: "Standard", tag: "", rewardMul: 1.0, timeMul: 1.0, weight: 5 },
+  { id: "rush", label: "Rush", tag: "⏱ RUSH", rewardMul: 1.5, timeMul: 0.6, weight: 2 },
+  { id: "fragile", label: "Fragile", tag: "⚠ FRAGILE", rewardMul: 1.6, timeMul: 1.05, weight: 2 },
+  { id: "heavy", label: "Heavy", tag: "🏋 HEAVY", rewardMul: 1.7, timeMul: 1.3, weight: 2 },
+];
+
+function pickJobType() {
+  const total = JOB_TYPES.reduce((s, t) => s + t.weight, 0);
+  let r = Math.random() * total;
+  for (const t of JOB_TYPES) { if ((r -= t.weight) <= 0) return t; }
+  return JOB_TYPES[0];
+}
+
 const ARRIVE_RADIUS = 9;
 
 export class MissionManager {
@@ -30,7 +44,14 @@ export class MissionManager {
     // generous time budget so new players never feel rushed
     const timeLimit = Math.round(80 + dist * 1.7);
 
-    return { pickup: a, dropoff: b, cargo, reward, xp, distance: Math.round(dist), timeLimit };
+    const type = pickJobType();
+    return {
+      pickup: a, dropoff: b, cargo, type,
+      reward: Math.round(reward * type.rewardMul),
+      xp: Math.round(xp * (type.id === "standard" ? 1 : 1.2)),
+      distance: Math.round(dist),
+      timeLimit: Math.round(timeLimit * type.timeMul),
+    };
   }
 
   accept(offer) {
@@ -78,7 +99,8 @@ export class MissionManager {
   registerDamage(amount) {
     if (this.active) {
       this.active.damageTaken += amount;
-      if (this.active.damageTaken > 45) this.active.perfect = false;
+      const lim = this.active.type && this.active.type.id === "fragile" ? 18 : 45;
+      if (this.active.damageTaken > lim) this.active.perfect = false;
     }
   }
 }

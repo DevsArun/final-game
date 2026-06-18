@@ -73,4 +73,42 @@ export class Sfx {
     this._tone(659, 0.1, 0.12, "triangle", 0.14);
     this._tone(784, 0.2, 0.18, "triangle", 0.14);
   }
+
+  // ---- continuous engine loop ----
+  startEngine() {
+    this._ensure();
+    if (!this.ctx || this.engine) return;
+    const osc = this.ctx.createOscillator();
+    const sub = this.ctx.createOscillator();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+    osc.type = "sawtooth"; sub.type = "square";
+    filter.type = "lowpass"; filter.frequency.value = 700;
+    osc.frequency.value = 60; sub.frequency.value = 30;
+    gain.gain.value = 0;
+    osc.connect(filter); sub.connect(filter); filter.connect(gain); gain.connect(this.ctx.destination);
+    try { osc.start(); sub.start(); } catch (e) {}
+    this.engine = { osc, sub, filter, gain };
+  }
+
+  setEngine(speedFrac, throttle) {
+    if (!this.engine || !this.ctx) return;
+    const t = this.ctx.currentTime;
+    const base = 55 + speedFrac * 150 + throttle * 30;
+    this.engine.osc.frequency.setTargetAtTime(base, t, 0.08);
+    this.engine.sub.frequency.setTargetAtTime(base * 0.5, t, 0.08);
+    this.engine.filter.frequency.setTargetAtTime(500 + speedFrac * 1500, t, 0.1);
+    const vol = this.muted ? 0 : (0.025 + throttle * 0.05 + speedFrac * 0.04);
+    this.engine.gain.gain.setTargetAtTime(vol, t, 0.1);
+  }
+
+  stopEngine() {
+    if (!this.engine || !this.ctx) { this.engine = null; return; }
+    const e = this.engine;
+    try {
+      e.gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.08);
+      setTimeout(() => { try { e.osc.stop(); e.sub.stop(); } catch (_) {} }, 220);
+    } catch (err) {}
+    this.engine = null;
+  }
 }

@@ -53,6 +53,17 @@ export class Geometry {
   }
   face(i0, i1, i2) { this.indices.push(i0, i1, i2); return this; }
 
+  // Assign planar UVs from final vertex positions (call after all merges).
+  // Good for wrapping a tiling paint/panel texture over a composite body.
+  planarUV(scale = 4) {
+    this.uvs = [];
+    for (let i = 0; i < this.positions.length; i += 3) {
+      const x = this.positions[i], y = this.positions[i + 1], z = this.positions[i + 2];
+      this.uvs.push((x + z) / scale, y / scale);
+    }
+    return this;
+  }
+
   // Merge another geometry, optionally transformed by a mat4.
   merge(geo, transform) {
     const base = this.positions.length / 3;

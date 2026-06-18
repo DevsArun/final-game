@@ -62,6 +62,11 @@ export class Environment {
     const sun = Math.sin((this.time - 0.25) * Math.PI * 2);
     return sun < 0.05;
   }
+  // 0 = full day .. 1 = deep night (smooth), for window glow / headlights.
+  nightFactor() {
+    const sun = Math.sin((this.time - 0.25) * Math.PI * 2);
+    return clamp(-sun * 1.3 + 0.18, 0, 1);
+  }
   isRaining() { return this.weather === "rain"; }
   isFoggy() { return this.weather === "fog"; }
 

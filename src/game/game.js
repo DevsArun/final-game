@@ -2,7 +2,7 @@
 import { Renderer } from "../core/gl.js";
 import { Input } from "../core/input.js";
 import { Loop } from "../core/loop.js";
-import { mat4, clamp, vec3 } from "../core/math.js";
+import { mat4, clamp, vec3, lerp } from "../core/math.js";
 import { Mesh, box } from "../core/mesh.js";
 
 import { World } from "./world.js";
@@ -65,7 +65,7 @@ export class Game {
     this.traffic = new Traffic(gl, this.world, 0); // no AI traffic — player's truck only
     this.particles = new Particles(gl);
 
-    this.truck = new Truck(gl, this.profile.selectedTruckDef, this.profile.selectedStats);
+    this.truck = new Truck(gl, this.profile.selectedTruckDef, this.profile.selectedStats, this.tex);
     this.applySkin();
     this.truck.reset(this.world.spawn, Math.PI);
 
@@ -139,6 +139,7 @@ export class Game {
     this.state = STATE.MENU;
     this.mission.cancel();
     this.platform.gameplayStop();
+    this.sfx.stopEngine();
     this.hud.hide();
     this.profile.save();
     this.screens.mainMenu({
@@ -215,6 +216,7 @@ export class Game {
     this.screens.hide();
     this.hud.show(this.platform.isMobile());
     this.platform.gameplayStart();
+    this.sfx.startEngine();
     if (!this.profile.data.settings.tutorialDone) { this.showTutorial(); return; }
     if (!this.mission.active) this.showJobOffer();
   }
@@ -399,7 +401,7 @@ export class Game {
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 2.5);
 
     if (this.state === STATE.DRIVING) this.simulate(dt);
-    else this.idleCamera(dt);
+    else { this.idleCamera(dt); this.sfx.setEngine(0, 0); }
 
     this.render();
   }
@@ -427,6 +429,7 @@ export class Game {
     const broken = this.health <= 0;
     let speedMul = healthFrac < 0.25 ? 0.6 + healthFrac * 1.6 : 1;
     if (this.truck.burstWheel >= 0) speedMul = Math.min(speedMul, 0.55);
+    if (this.mission.active && this.mission.active.type && this.mission.active.type.id === "heavy") speedMul = Math.min(speedMul, 0.82);
     const prevMax = this.truck.maxSpeedMS;
     this.truck.maxSpeedMS = prevMax * (broken ? 0 : speedMul);
     const canMove = this.fuel > 0 && !broken;
@@ -500,6 +503,7 @@ export class Game {
       const burn = (0.05 + throttle * 0.22 + speedFrac * 0.12) * dt;
       this.fuel = clamp(this.fuel - burn, 0, this.maxFuel);
     }
+    this.sfx.setEngine(speedFrac, throttle);
 
     // fuel station: refuel + repair (+ fix tyre)
     for (const z of this.world.fuelZones) {
@@ -557,13 +561,15 @@ export class Game {
     this.hud.setGauges(this.fuel / this.maxFuel, this.health / this.maxHealth);
     this.hud.setSpeed(this.truck.speedKMH, this.truck.speed < -0.2);
     this.hud.setClock(this.env);
+    this.hud.drawMinimap(this.world, this.truck.pos, this.truck.heading, this.mission.target || this.depot.pos);
   }
 
   // ---------------- Render ----------------
   render() {
     const r = this.renderer;
     this.env.apply(r);
-    r.beginFrame(this.cam.viewMatrix(), 62, this.cam.pos);
+    const sf = clamp(this.truck.speedKMH / 130, 0, 1);
+    r.beginFrame(this.cam.viewMatrix(), 60 + sf * 10, this.cam.pos);
 
     // gradient sky dome (follows camera, tinted by current sky colour)
     const skyM = mat4.compose([this.cam.pos[0], 0, this.cam.pos[2]], [0, 0, 0], [1000, 520, 1000]);
@@ -577,6 +583,11 @@ export class Game {
         r.draw(group.mesh, m);
       }
     }
+
+    // building windows: glass by day, warm glow at night
+    const nf = this.env.nightFactor();
+    const winTint = [lerp(0.34, 1.2, nf), lerp(0.44, 0.92, nf), lerp(0.58, 0.5, nf)];
+    for (const wm of this.world.windowMeshes) r.draw(wm, I, { unlit: true, fog: 1, tint: winTint });
 
     this.drawShadows();
     this.traffic.render(r);

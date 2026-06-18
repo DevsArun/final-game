@@ -16,8 +16,10 @@ export class HUD {
       touch: document.getElementById("touch-controls"),
       toast: document.getElementById("toast"),
       clock: document.getElementById("hud-clock"),
+      minimap: document.getElementById("minimap"),
     };
     this._toastTimer = null;
+    this._mmctx = null;
   }
 
   show(showTouch) {
@@ -42,7 +44,8 @@ export class HUD {
     }
     const job = mission.active;
     const verb = job.phase === "pickup" ? "Pick up" : "Deliver";
-    this.el.missionTitle.textContent = `${verb}: ${job.cargo}`;
+    const tag = job.type && job.type.tag ? `  ${job.type.tag}` : "";
+    this.el.missionTitle.textContent = `${verb}: ${job.cargo}${tag}`;
     this.el.missionSub.textContent = `→ ${mission.targetName}   •   ${Math.ceil(job.timeLeft)}s   •   $${job.reward}`;
   }
 
@@ -73,6 +76,34 @@ export class HUD {
     const m = Math.floor(((env.time * 24) % 1) * 60);
     const icon = env.isRaining() ? "🌧️" : env.isFoggy() ? "🌫️" : env.isNight() ? "🌙" : "☀️";
     this.el.clock.textContent = `${icon} ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+
+  drawMinimap(world, pos, heading, target) {
+    const cv = this.el.minimap;
+    if (!cv) return;
+    if (cv.width !== 132) { cv.width = 132; cv.height = 132; }
+    const ctx = this._mmctx || (this._mmctx = cv.getContext("2d"));
+    if (!ctx || typeof ctx.clearRect !== "function") return;
+    const S = 132, e = world.half, b = world.map.blockSize;
+    const sc = S / (e * 2 + 30);
+    const X = (wx) => S / 2 + wx * sc;
+    const Y = (wz) => S / 2 + wz * sc;
+    ctx.clearRect(0, 0, S, S);
+    ctx.fillStyle = "rgba(20,26,40,0.55)"; ctx.fillRect(0, 0, S, S);
+    ctx.strokeStyle = "rgba(130,140,160,0.45)"; ctx.lineWidth = 1.5;
+    for (let g = -e; g <= e; g += b) {
+      ctx.beginPath(); ctx.moveTo(X(-e), Y(g)); ctx.lineTo(X(e), Y(g)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(X(g), Y(-e)); ctx.lineTo(X(g), Y(e)); ctx.stroke();
+    }
+    if (target) {
+      ctx.fillStyle = "#36d07a";
+      ctx.beginPath(); ctx.arc(X(target[0]), Y(target[2]), 5, 0, 7); ctx.fill();
+    }
+    const px = X(pos[0]), py = Y(pos[2]);
+    ctx.save(); ctx.translate(px, py); ctx.rotate(Math.PI - heading);
+    ctx.fillStyle = "#ffb422";
+    ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(5, 6); ctx.lineTo(-5, 6); ctx.closePath(); ctx.fill();
+    ctx.restore();
   }
 
   toast(msg, ms = 2200) {

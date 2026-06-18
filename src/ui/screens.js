@@ -8,8 +8,8 @@ export class Screens {
     this.overlay = document.getElementById("overlay");
   }
 
-  hide() { this.overlay.classList.add("hidden"); this.overlay.innerHTML = ""; }
-  _show(html) { this.overlay.innerHTML = html; this.overlay.classList.remove("hidden"); }
+  hide() { this.overlay.classList.add("hidden"); this.overlay.classList.remove("with-preview"); this.overlay.innerHTML = ""; }
+  _show(html) { this.overlay.innerHTML = html; this.overlay.classList.remove("hidden"); this.overlay.classList.remove("with-preview"); }
   _$(sel) { return this.overlay.querySelector(sel); }
   _all(sel) { return this.overlay.querySelectorAll(sel); }
 
@@ -112,6 +112,7 @@ export class Screens {
       this._all("[data-up]").forEach((b) => b.onclick = () => { if (onBuyUpgrade(b.dataset.up)) render(); });
       this._$("#g-cos").onclick = onCosmetics;
       this._$("#g-close").onclick = onClose;
+      this.overlay.classList.add("with-preview");
     };
     render();
   }
@@ -153,6 +154,7 @@ export class Screens {
       });
       this._all("[data-prev]").forEach((b) => b.onclick = () => onPreviewHorn(HORNS.find((x) => x.id === b.dataset.prev)));
       this._$("#c-close").onclick = onClose;
+      this.overlay.classList.add("with-preview");
     };
     render();
   }
@@ -214,6 +216,7 @@ export class Screens {
         <p class="sub">Central Depot dispatch</p>
         <div class="card" style="text-align:left">
           <div class="name">${offer.cargo}</div>
+          <div class="results-stat"><span>Type</span><b>${offer.type ? offer.type.label : "Standard"}${offer.type && offer.type.tag ? " " + offer.type.tag : ""}</b></div>
           <div class="results-stat"><span>From</span><b>${offer.pickup.name}</b></div>
           <div class="results-stat"><span>To</span><b>${offer.dropoff.name}</b></div>
           <div class="results-stat"><span>Distance</span><b>${offer.distance} m</b></div>
