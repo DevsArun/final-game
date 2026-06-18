@@ -129,23 +129,26 @@ export class World {
     }
     this.staticMeshes.push(new Mesh(gl, padGeo));
 
-    // --- Buildings (in blocks, off the roads) ---
+    // --- Buildings: district-based heights (tall downtown -> low outskirts) ---
     let bGeo = new Geometry();
     const palette = [
-      [0.7, 0.4, 0.35], [0.5, 0.55, 0.65], [0.75, 0.7, 0.55],
-      [0.45, 0.5, 0.55], [0.65, 0.6, 0.7], [0.55, 0.65, 0.6],
+      [0.86, 0.78, 0.62], [0.82, 0.55, 0.45], [0.62, 0.74, 0.80], [0.80, 0.82, 0.84],
+      [0.72, 0.60, 0.70], [0.56, 0.72, 0.62], [0.88, 0.72, 0.50], [0.50, 0.56, 0.66],
     ];
+    const parkCenter = [90, -90];
+    this.parkCenter = parkCenter;
     for (let cx = -extent + b / 2; cx < extent; cx += b) {
       for (let cz = -extent + b / 2; cz < extent; cz += b) {
+        if (Math.hypot(cx - parkCenter[0], cz - parkCenter[1]) < 1) continue; // leave park block empty
+        const distF = Math.min(Math.hypot(cx, cz) / extent, 1);   // 0 center .. 1 edge
         const count = 1 + Math.floor(rng() * 3);
         for (let i = 0; i < count; i++) {
           const w = 8 + rng() * 14;
           const d = 8 + rng() * 14;
-          const h = 6 + rng() * 30;
+          const h = 7 + (1 - distF) * 46 + rng() * 10;             // skyline
           const ox = cx + (rng() - 0.5) * (b - rw - w - 6);
           const oz = cz + (rng() - 0.5) * (b - rw - d - 6);
           if (this.isOnRoad(ox, oz)) continue;
-          // keep clear around spawn / depot
           if (Math.hypot(ox - this.spawn[0], oz - this.spawn[2]) < 24) continue;
           const color = palette[Math.floor(rng() * palette.length)];
           bGeo.merge(buildBuilding(w, h, d, color), translation(ox, 0.18, oz));
@@ -155,6 +158,13 @@ export class World {
       }
     }
     this._flush(bGeo);
+
+    // --- Water: park pond + riverfront beyond the western border (visual) ---
+    const waterGeo = new Geometry();
+    const water = [0.16, 0.34, 0.5];
+    hquad(waterGeo, parkCenter[0], parkCenter[1], 24, 24, water, 0.07);
+    hquad(waterGeo, -(extent + 170), 0, 320, extent * 2 + 240, water, 0.2);
+    this.staticMeshes.push(new Mesh(gl, waterGeo));
 
     // --- Border wall (invisible-ish low barrier) keeps player in bounds ---
     const wallGeo = new Geometry();
@@ -183,6 +193,11 @@ export class World {
     // a few cones near depot
     for (let i = 0; i < 8; i++) {
       cones.push({ x: this.spawn[0] + (rng() - 0.5) * 18, y: 0, z: this.spawn[2] - 14 - i * 1.4, rot: 0, scale: 1 });
+    }
+    // park: ring of dense trees around the pond
+    for (let i = 0; i < 30; i++) {
+      const a = rng() * Math.PI * 2, rr = 13 + rng() * 14;
+      trees.push({ x: parkCenter[0] + Math.cos(a) * rr, y: 0, z: parkCenter[1] + Math.sin(a) * rr, rot: rng() * 6, scale: 1.0 + rng() * 0.7 });
     }
     this.instanced.push({ mesh: treeMesh, instances: trees });
     this.instanced.push({ mesh: lampMesh, instances: lamps });

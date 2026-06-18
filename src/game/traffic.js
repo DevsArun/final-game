@@ -17,6 +17,9 @@ export class Traffic {
     this.lane = 3;
     this.dt = 1 / 60;
 
+    this.vehicles = [];
+    if (count <= 0) return; // traffic disabled — player truck only
+
     this.carTypes = CAR_COLORS.map((c) => {
       const o = buildCar({ body: c });
       return { mesh: new Mesh(gl, o.geo), radius: o.radius, lo: 11, hi: 19, kind: "car" };

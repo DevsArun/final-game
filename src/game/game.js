@@ -62,7 +62,7 @@ export class Game {
     this.depot = this.world.hubs.find((h) => h.name === DEPOT_NAME) || this.world.hubs[0];
 
     this.env = new Environment();
-    this.traffic = new Traffic(gl, this.world);
+    this.traffic = new Traffic(gl, this.world, 0); // no AI traffic — player's truck only
     this.particles = new Particles(gl);
 
     this.truck = new Truck(gl, this.profile.selectedTruckDef, this.profile.selectedStats);

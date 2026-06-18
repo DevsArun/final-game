@@ -145,7 +145,7 @@ export class Truck {
       [1, 1, 1]
     );
     this._model = model;
-    renderer.draw(this.bodyMesh, model, { tint });
+    renderer.draw(this.bodyMesh, model, { tint, spec: 0.5, shininess: 64, rim: 0.16 });
 
     // wheels
     for (let i = 0; i < this.wheels.length; i++) {
@@ -158,7 +158,7 @@ export class Truck {
       );
       const spin = mat4.rotationX(-this.wheelSpin);
       const wm = mat4.multiply(mat4.multiply(model, local), spin);
-      renderer.draw(this.wheelMesh, wm, { tint });
+      renderer.draw(this.wheelMesh, wm, { tint, spec: 0.05, shininess: 8 });
     }
   }
 

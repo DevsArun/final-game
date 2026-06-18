@@ -134,10 +134,10 @@ assert.ok(game.profile.money > moneyBefore, "delivery paid out (money " + moneyB
 console.log(`  ✓ pickup + delivery completed, balance ${moneyBefore} -> ${game.profile.money}`);
 
 // ---- new systems coverage ----
-assert.ok(game.traffic.vehicles.length > 0, "traffic spawned vehicles");
 game.traffic.update(1 / 60, game.truck.pos);
 game.traffic.resolve(game.truck);
-console.log(`  ✓ traffic: ${game.traffic.vehicles.length} vehicles update+resolve clean`);
+assert.ok(Array.isArray(game.traffic.shadowList()), "traffic api clean when disabled");
+console.log(`  ✓ traffic disabled (player-only): ${game.traffic.vehicles.length} vehicles`);
 
 // weather + overlay
 game.env.setWeather("rain");
