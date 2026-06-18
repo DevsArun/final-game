@@ -183,6 +183,29 @@ export class Screens {
     this._$("#a-close").onclick = onClose;
   }
 
+  // ---------- Tutorial / how to play ----------
+  tutorial({ onClose }) {
+    this._show(`
+      <div class="panel center">
+        <h1>HOW TO PLAY</h1>
+        <p class="sub">Become the city's top trucker — deliver cargo, earn cash, upgrade.</p>
+        <div class="card" style="text-align:left">
+          <div class="results-stat"><span>1️⃣ Follow the arrow</span><b style="color:#4f8cff">Pick up</b></div>
+          <div class="results-stat"><span>2️⃣ Drive to the green marker</span><b style="color:var(--good)">Deliver</b></div>
+          <div class="results-stat"><span>3️⃣ Earn $ + XP, then auto-get next job</span><b style="color:var(--accent)">Repeat</b></div>
+          <div class="results-stat"><span>⛽ Low fuel / damage?</span><b>Drive into a fuel station</b></div>
+          <div class="results-stat"><span>🛠️ Spend $ in Garage</span><b>Faster trucks</b></div>
+        </div>
+        <div class="card" style="text-align:left">
+          <div class="results-stat"><span>Move</span><b>WASD / Arrows / on-screen buttons</b></div>
+          <div class="results-stat"><span>Horn</span><b>H</b></div>
+          <div class="results-stat"><span>Camera</span><b>C</b></div>
+        </div>
+        <button class="btn" id="t-ok">START DRIVING →</button>
+      </div>`);
+    this._$("#t-ok").onclick = onClose;
+  }
+
   // ---------- Job offer ----------
   jobOffer({ offer, onAccept, onDecline }) {
     this._show(`

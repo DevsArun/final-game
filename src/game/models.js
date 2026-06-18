@@ -56,8 +56,8 @@ export function buildTruck(spec) {
   // sun visor
   body.merge(box(2.62, 0.14, 0.5, trim, [0, 3.18, cz + 1.15]));
   // twin chrome exhaust stacks behind cab
-  body.merge(cylinderAt(0.13, 2.9, CHROME, 1.36, 0.7, cz - 1.2));
-  body.merge(cylinderAt(0.13, 2.9, CHROME, -1.36, 0.7, cz - 1.2));
+  body.merge(cylinderAt(0.13, 2.4, CHROME, 1.36, 0.7, cz - 1.2));
+  body.merge(cylinderAt(0.13, 2.4, CHROME, -1.36, 0.7, cz - 1.2));
   // side mirrors
   body.merge(box(0.5, 0.08, 0.08, trim, [1.55, 2.4, cz + 0.9]));
   body.merge(box(0.5, 0.08, 0.08, trim, [-1.55, 2.4, cz + 0.9]));
@@ -66,6 +66,11 @@ export function buildTruck(spec) {
   // saddle fuel tanks (cylinders along travel direction)
   body.merge(cylZAt(0.34, 1.6, CHROME, 1.28, 0.78, cz - 1.9));
   body.merge(cylZAt(0.34, 1.6, CHROME, -1.28, 0.78, cz - 1.9));
+  // front wheel fenders/mudguards + chrome bumper guards (finished look)
+  body.merge(box(0.78, 0.2, 1.7, trim, [1.28, 1.32, cz + 0.2]));
+  body.merge(box(0.78, 0.2, 1.7, trim, [-1.28, 1.32, cz + 0.2]));
+  body.merge(box(0.16, 0.7, 0.16, CHROME, [0.7, 0.75, cz + 1.5]));
+  body.merge(box(0.16, 0.7, 0.16, CHROME, [-0.7, 0.75, cz + 1.5]));
 
   // ===== TRAILER (box container, back) =====
   const tFront = 0.9, tBack = -7.2;

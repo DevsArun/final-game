@@ -5,7 +5,7 @@ import { TRUCKS, UPGRADES, getTruck, upgradeCost, effectiveStats } from "../conf
 const SAVE_KEY = "profile_v1";
 
 export function xpForLevel(level) {
-  return Math.floor(120 * Math.pow(level, 1.45));
+  return Math.floor(80 * Math.pow(level, 1.22));
 }
 
 export class Profile {
@@ -30,7 +30,7 @@ export class Profile {
         ownedHorns: ["stock"], horn: "stock",
         ownedLights: ["none"], light: "none",
       },
-      settings: { muted: false },
+      settings: { muted: false, tutorialDone: false },
       lastDailyClaim: 0,
     };
   }

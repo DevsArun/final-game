@@ -215,7 +215,21 @@ export class Game {
     this.screens.hide();
     this.hud.show(this.platform.isMobile());
     this.platform.gameplayStart();
+    if (!this.profile.data.settings.tutorialDone) { this.showTutorial(); return; }
     if (!this.mission.active) this.showJobOffer();
+  }
+
+  showTutorial() {
+    this.state = STATE.MODAL;
+    this.screens.tutorial({
+      onClose: () => {
+        this.profile.data.settings.tutorialDone = true;
+        this.profile.save();
+        this.screens.hide();
+        this.state = STATE.DRIVING;
+        if (!this.mission.active) this.showJobOffer();
+      },
+    });
   }
 
   togglePause() {
@@ -272,7 +286,7 @@ export class Game {
     if (this.env.isNight()) st.nightJobs++;
     if (this.env.isRaining()) st.rainJobs++;
     this.sfx.cash();
-    if (leveledUp) this.sfx.level();
+    if (leveledUp) { this.sfx.level(); this.hud.toast(`⭐ LEVEL UP! Driver Lv ${this.profile.level}`); }
 
     const fresh = checkAchievements(this.profile);
     updateRecords(this.profile, this.platform);
@@ -314,9 +328,12 @@ export class Game {
       await this.platform.showInterstitial();
     }
     this.screens.hide();
+    // always hand out the next job so the player always has a clear objective
+    const offer = this.mission.generateOffer(this.profile);
+    this.mission.accept(offer);
     this.state = STATE.DRIVING;
     this.platform.gameplayStart();
-    this.hud.toast("Return to Central Depot (yellow) for a new job");
+    this.hud.toast(`New job — pick up ${offer.cargo} at ${offer.pickup.name}`);
   }
 
   // ---------------- Stranded ----------------
@@ -420,11 +437,11 @@ export class Game {
     this.traffic.update(dt, this.truck.pos);
     const trafficImpulse = this.traffic.resolve(this.truck);
     const impulse = Math.max(res.hitImpulse, trafficImpulse);
-    if (impulse > 4) {
-      const dmg = (impulse - 4) * 1.6;
+    if (impulse > 6) {
+      const dmg = (impulse - 6) * 0.8;
       this.health = clamp(this.health - dmg, 0, this.maxHealth);
       this.mission.registerDamage(dmg);
-      if (dmg > 6) { this.hud.toast("Crash! Truck damaged"); this.sfx.crash(); this.shake = Math.min(0.7, dmg * 0.05); }
+      if (dmg > 5) { this.hud.toast("Crash! Truck damaged"); this.sfx.crash(); this.shake = Math.min(0.6, dmg * 0.04); }
     }
 
     // potholes
@@ -434,12 +451,12 @@ export class Game {
         if (vec3.dist2D(this.truck.pos, [p.x, 0, p.z]) < p.r + this.truck.dims.halfWidth) {
           this.potholeCd = 0.7;
           const kmh = this.truck.speedKMH;
-          if (kmh > 25) {
-            this.shake = Math.min(0.6, kmh * 0.006);
-            this.truck.speed *= 0.8;
-            this.health = clamp(this.health - kmh * 0.06, 0, this.maxHealth);
-            this.particles.sparks(this.truck.localToWorld([0, 0.2, -3]), 4);
-            if (kmh > 55 && this.truck.burstWheel < 0 && Math.random() < 0.3) this.burstTyre();
+          if (kmh > 28) {
+            this.shake = Math.min(0.5, kmh * 0.005);
+            this.truck.speed *= 0.85;
+            this.health = clamp(this.health - kmh * 0.03, 0, this.maxHealth);
+            this.particles.sparks(this.truck.localToWorld([0, 0.2, -3]), 3);
+            if (kmh > 75 && this.truck.burstWheel < 0 && Math.random() < 0.12) this.burstTyre();
           }
           break;
         }
@@ -480,7 +497,7 @@ export class Game {
     const speedFrac = Math.abs(this.truck.speed) / Math.max(this.truck.maxSpeedMS, 1);
     const throttle = input.throttle();
     if (canMove) {
-      const burn = (0.12 + throttle * 0.5 + speedFrac * 0.28) * dt * 6;
+      const burn = (0.05 + throttle * 0.22 + speedFrac * 0.12) * dt;
       this.fuel = clamp(this.fuel - burn, 0, this.maxFuel);
     }
 

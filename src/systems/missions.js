@@ -24,11 +24,11 @@ export class MissionManager {
 
     const dist = vec3.dist2D(a.pos, b.pos);
     const levelBonus = 1 + profile.level * 0.05;
-    const reward = Math.round((60 + dist * 1.8) * levelBonus);
-    const xp = Math.round(20 + dist * 0.4);
+    const reward = Math.round((80 + dist * 2.0) * levelBonus);
+    const xp = Math.round(35 + dist * 0.7);
     const cargo = CARGO_TYPES[Math.floor(Math.random() * CARGO_TYPES.length)];
-    // time budget: generous, scaled by distance (seconds)
-    const timeLimit = Math.round(40 + dist * 0.9);
+    // generous time budget so new players never feel rushed
+    const timeLimit = Math.round(80 + dist * 1.7);
 
     return { pickup: a, dropoff: b, cargo, reward, xp, distance: Math.round(dist), timeLimit };
   }
@@ -78,7 +78,7 @@ export class MissionManager {
   registerDamage(amount) {
     if (this.active) {
       this.active.damageTaken += amount;
-      if (this.active.damageTaken > 25) this.active.perfect = false;
+      if (this.active.damageTaken > 45) this.active.perfect = false;
     }
   }
 }
