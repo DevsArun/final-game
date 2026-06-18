@@ -156,3 +156,23 @@ body {
 .tag.locked { background: rgba(255,77,77,.2); color: var(--bad); }
 .center { text-align: center; }
 .mt { margin-top: 18px; }
+
+
+/* HUD clock + top-right cluster */
+.hud-top-right { display: flex; align-items: center; gap: 8px; }
+.clock {
+  background: var(--panel); border: 1px solid rgba(255,255,255,.08);
+  padding: 8px 12px; border-radius: 12px; font-weight: 800; font-size: 15px;
+  backdrop-filter: blur(4px); pointer-events: none;
+}
+.btn.mini { display: inline-block; width: auto; padding: 8px 14px; font-size: 14px; margin-top: 0; }
+.cos-section { margin-top: 14px; }
+.cos-section h3 { font-size: 16px; margin-bottom: 4px; color: var(--accent); }
+.swatch { display: inline-block; width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(255,255,255,.2); vertical-align: middle; margin-right: 8px; }
+.ach-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+.ach-ic { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 900; flex: 0 0 auto; }
+.ach-ic.done { background: rgba(54,208,122,.2); color: var(--good); }
+.ach-ic.todo { background: rgba(255,255,255,.08); color: var(--muted); }
+.ach-txt { flex: 1; }
+.ach-txt .n { font-weight: 700; }
+.ach-txt .d { font-size: 12px; color: var(--muted); }

@@ -242,3 +242,117 @@ function normalize3(v) {
   const l = Math.hypot(v[0], v[1], v[2]) || 1;
   return [v[0] / l, v[1] / l, v[2] / l];
 }
+
+
+// ============================================================
+// Traffic vehicles + theme props (wheels baked in => 1 draw each)
+// ============================================================
+
+function wheelAt(r, w, x, y, z) {
+  const g = wheel(r, w, 9, TIRE, [0.12, 0.12, 0.14]);
+  return new Geometry().merge(g, mat4.translation(x, y, z));
+}
+
+// Small passenger car. Returns { geo, radius, length, height }.
+export function buildCar(colors) {
+  const body = colors.body || [0.8, 0.2, 0.2];
+  const bodyDark = [body[0] * 0.7, body[1] * 0.7, body[2] * 0.7];
+  const g = new Geometry();
+  g.merge(box(1.9, 0.7, 4.2, body, [0, 0.62, 0]));          // lower body
+  g.merge(box(1.78, 0.18, 4.0, bodyDark, [0, 0.95, 0]));    // belt line
+  g.merge(box(1.7, 0.66, 2.1, body, [0, 1.25, -0.1]));      // cabin
+  g.merge(box(1.6, 0.5, 0.12, GLASS, [0, 1.3, 0.96]));      // windshield
+  g.merge(box(1.6, 0.5, 0.12, GLASS, [0, 1.3, -1.16]));     // rear glass
+  g.merge(box(0.12, 0.46, 1.7, GLASS, [0.86, 1.3, -0.1]));  // side glass
+  g.merge(box(0.12, 0.46, 1.7, GLASS, [-0.86, 1.3, -0.1]));
+  g.merge(box(0.4, 0.22, 0.12, LIGHT, [0.6, 0.62, 2.12]));  // headlights
+  g.merge(box(0.4, 0.22, 0.12, LIGHT, [-0.6, 0.62, 2.12]));
+  g.merge(box(0.4, 0.22, 0.12, RED, [0.6, 0.7, -2.12]));    // taillights
+  g.merge(box(0.4, 0.22, 0.12, RED, [-0.6, 0.7, -2.12]));
+  g.merge(box(2.0, 0.18, 0.4, bodyDark, [0, 0.55, 2.05]));  // bumper f
+  g.merge(box(2.0, 0.18, 0.4, bodyDark, [0, 0.55, -2.05])); // bumper r
+  const r = 0.36;
+  g.merge(wheelAt(r, 0.32, 0.92, r, 1.35));
+  g.merge(wheelAt(r, 0.32, -0.92, r, 1.35));
+  g.merge(wheelAt(r, 0.32, 0.92, r, -1.35));
+  g.merge(wheelAt(r, 0.32, -0.92, r, -1.35));
+  return { geo: g, radius: 2.2, length: 4.2, height: 1.6 };
+}
+
+// Police car: white body, blue trim, roof light bar.
+export function buildPolice() {
+  const out = buildCar({ body: [0.93, 0.93, 0.95] });
+  const g = out.geo;
+  g.merge(box(1.92, 0.5, 1.2, [0.1, 0.2, 0.7], [0, 0.9, 0.4]));   // door panel blue
+  g.merge(box(0.5, 0.18, 0.5, [0.9, 0.1, 0.1], [-0.3, 1.7, -0.1])); // light bar red
+  g.merge(box(0.5, 0.18, 0.5, [0.1, 0.2, 0.9], [0.3, 1.7, -0.1]));  // light bar blue
+  return out;
+}
+
+// Slow farm tractor (India flavor): big rear wheels, exhaust pipe.
+export function buildTractor() {
+  const g = new Geometry();
+  const green = [0.15, 0.45, 0.18];
+  const dark = [0.1, 0.1, 0.12];
+  g.merge(box(1.3, 0.9, 2.6, green, [0, 1.0, 0.2]));       // engine/body
+  g.merge(box(1.5, 1.0, 1.2, green, [0, 1.7, -0.9]));      // cabin frame
+  g.merge(box(1.4, 0.7, 0.1, GLASS, [0, 1.9, -0.35]));     // windshield
+  g.merge(box(0.3, 0.22, 0.12, LIGHT, [0.45, 1.0, 1.42])); // lights
+  g.merge(box(0.3, 0.22, 0.12, LIGHT, [-0.45, 1.0, 1.42]));
+  g.merge(cylinderAt(0.1, 1.4, dark, 0.45, 1.4, 0.9));     // exhaust pipe
+  // wheels: small front, big rear
+  g.merge(wheelAt(0.45, 0.3, 0.78, 0.45, 1.2));
+  g.merge(wheelAt(0.45, 0.3, -0.78, 0.45, 1.2));
+  g.merge(wheelAt(0.95, 0.5, 0.92, 0.95, -1.0));
+  g.merge(wheelAt(0.95, 0.5, -0.92, 0.95, -1.0));
+  return { geo: g, radius: 2.0, length: 3.2, height: 2.3 };
+}
+
+// Unit cube for particle billboards (tinted/scaled per particle).
+export function buildUnitCube() {
+  return box(1, 1, 1, [1, 1, 1]);
+}
+
+// Headlight beam: a long thin box pointing forward (+Z), low-alpha tint.
+export function buildBeam() {
+  const g = new Geometry();
+  g.merge(box(1.0, 0.12, 9.0, [1.0, 0.95, 0.7], [0, 0, 4.5]));
+  return g;
+}
+
+// Underglow strip beneath the truck.
+export function buildUnderglow() {
+  return box(2.6, 0.05, 9.0, [1, 1, 1], [0, 0, -1.5]);
+}
+
+// Striped traffic barrier (police checkpoint).
+export function buildBarrier() {
+  const g = new Geometry();
+  g.merge(box(0.3, 1.0, 0.3, [0.1, 0.1, 0.12], [-3, 0.5, 0]));
+  g.merge(box(0.3, 1.0, 0.3, [0.1, 0.1, 0.12], [3, 0.5, 0]));
+  for (let i = -3; i < 3; i++) {
+    const c = (i % 2 === 0) ? [0.9, 0.1, 0.1] : [0.95, 0.95, 0.95];
+    g.merge(box(1.0, 0.22, 0.22, c, [i + 0.5, 1.05, 0]));
+  }
+  return g;
+}
+
+// Police booth/checkpoint hut.
+export function buildBooth() {
+  const g = new Geometry();
+  g.merge(box(3.0, 2.6, 3.0, [0.25, 0.32, 0.55], [0, 1.3, 0]));
+  g.merge(box(3.2, 0.4, 3.2, [0.85, 0.85, 0.3], [0, 2.7, 0]));   // roof band
+  g.merge(box(1.4, 1.2, 0.1, GLASS, [0, 1.5, 1.52]));            // window
+  g.merge(box(0.8, 0.5, 0.12, [0.1, 0.2, 0.7], [0, 2.3, 1.55])); // "POLICE" sign
+  return g;
+}
+
+// Speed breaker: low wide yellow/black hump across a lane.
+export function buildSpeedBreaker() {
+  const g = new Geometry();
+  for (let i = -5; i <= 5; i++) {
+    const c = (i % 2 === 0) ? [0.9, 0.75, 0.1] : [0.1, 0.1, 0.1];
+    g.merge(box(1.0, 0.22, 2.4, c, [i, 0.11, 0]));
+  }
+  return g;
+}

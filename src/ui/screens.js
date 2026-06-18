@@ -1,5 +1,7 @@
 // Overlay screen manager. Builds menu DOM and wires callbacks.
 import { TRUCKS, UPGRADES, effectiveStats } from "../config/trucks.js";
+import { SKINS, HORNS, LIGHTS } from "../config/cosmetics.js";
+import { ACHIEVEMENTS } from "../systems/achievements.js";
 
 export class Screens {
   constructor() {
@@ -12,7 +14,7 @@ export class Screens {
   _all(sel) { return this.overlay.querySelectorAll(sel); }
 
   // ---------- Main menu ----------
-  mainMenu({ profile, onPlay, onGarage, onDaily, mapName }) {
+  mainMenu({ profile, onPlay, onGarage, onCosmetics, onAchievements, onToggleMute, onDaily, mapName, muted }) {
     const daily = profile.dailyAvailable();
     this._show(`
       <div class="panel center">
@@ -24,19 +26,27 @@ export class Screens {
           <div><div style="font-size:12px;color:var(--muted)">JOBS DONE</div><div style="font-size:24px;font-weight:900">${profile.data.stats.jobsDone}</div></div>
         </div>
         <button class="btn" id="m-play">DRIVE</button>
-        <button class="btn secondary" id="m-garage">GARAGE & SHOP</button>
+        <div class="row">
+          <button class="btn secondary" id="m-garage">GARAGE</button>
+          <button class="btn secondary" id="m-cos">COSMETICS</button>
+        </div>
+        <button class="btn secondary" id="m-ach">ACHIEVEMENTS</button>
         <button class="btn ${daily ? "reward" : "ghost"}" id="m-daily" ${daily ? "" : "disabled"}>
           ${daily ? "CLAIM DAILY REWARD" : "DAILY CLAIMED ✓"}
         </button>
-        <p class="sub mt" style="font-size:12px">Drive: WASD / Arrows • Handbrake: Space • Camera: C • Pause: Esc</p>
+        <button class="btn ghost" id="m-mute">SOUND: ${muted ? "OFF" : "ON"}</button>
+        <p class="sub mt" style="font-size:12px">Drive: WASD/Arrows • Handbrake: Space • Horn: H • Camera: C • Pause: Esc</p>
       </div>`);
     this._$("#m-play").onclick = onPlay;
     this._$("#m-garage").onclick = onGarage;
+    this._$("#m-cos").onclick = onCosmetics;
+    this._$("#m-ach").onclick = onAchievements;
+    this._$("#m-mute").onclick = onToggleMute;
     this._$("#m-daily").onclick = () => { if (profile.dailyAvailable()) onDaily(); };
   }
 
   // ---------- Garage / Shop ----------
-  garage({ profile, onSelect, onBuyTruck, onBuyUpgrade, onClose }) {
+  garage({ profile, onSelect, onBuyTruck, onBuyUpgrade, onCosmetics, onClose }) {
     const render = () => {
       const sel = profile.data.selectedTruck;
       const trucksHtml = TRUCKS.map((t) => {
@@ -91,15 +101,86 @@ export class Screens {
           <div class="shop-grid">${trucksHtml}</div>
           <h2 class="mt">Upgrades — ${profile.selectedTruckDef.name}</h2>
           <div class="shop-grid">${upHtml}</div>
-          <button class="btn mt" id="g-close">BACK</button>
+          <div class="row">
+            <button class="btn secondary mt" id="g-cos">COSMETICS</button>
+            <button class="btn mt" id="g-close">BACK</button>
+          </div>
         </div>`);
 
       this._all("[data-buy]").forEach((b) => b.onclick = () => { if (onBuyTruck(b.dataset.buy)) render(); });
       this._all("[data-select]").forEach((b) => b.onclick = () => { onSelect(b.dataset.select); render(); });
       this._all("[data-up]").forEach((b) => b.onclick = () => { if (onBuyUpgrade(b.dataset.up)) render(); });
+      this._$("#g-cos").onclick = onCosmetics;
       this._$("#g-close").onclick = onClose;
     };
     render();
+  }
+
+  // ---------- Cosmetics shop ----------
+  cosmetics({ profile, onBuy, onEquip, onPreviewHorn, onClose }) {
+    const colHex = (c) => c ? `rgb(${c.map((v) => Math.round(v * 255)).join(",")})` : "linear-gradient(45deg,#888,#ccc)";
+    const render = () => {
+      const item = (kind, it, swatchColor, extra) => {
+        const owned = profile.ownsCosmetic(kind, it.id);
+        const equipped = (kind === "skin" ? profile.selectedSkin : kind === "horn" ? profile.selectedHorn : profile.selectedLight) === it.id;
+        const sw = swatchColor !== undefined ? `<span class="swatch" style="background:${colHex(swatchColor)}"></span>` : "";
+        const btn = owned
+          ? `<button class="btn mini secondary" data-equip="${kind}:${it.id}" ${equipped ? "disabled" : ""}>${equipped ? "Equipped" : "Equip"}</button>`
+          : `<button class="btn mini" data-buy="${kind}:${it.id}" ${profile.canAfford(it.price) ? "" : "disabled"}>$${it.price.toLocaleString()}</button>`;
+        const prev = extra ? `<button class="btn mini ghost" data-prev="${it.id}">▶</button>` : "";
+        return `<div class="card" style="display:flex;align-items:center;gap:10px">
+          <div style="flex:1">${sw}<b>${it.name}</b></div>${prev}${btn}</div>`;
+      };
+      this._show(`
+        <div class="panel">
+          <div class="row" style="justify-content:space-between;align-items:center">
+            <h2>Cosmetics</h2>
+            <div class="stat money"><span class="ic">$</span>${profile.money.toLocaleString()}</div>
+          </div>
+          <div class="cos-section"><h3>Paint Skins</h3>${SKINS.map((s) => item("skin", s, s.cab)).join("")}</div>
+          <div class="cos-section"><h3>Horns</h3>${HORNS.map((h) => item("horn", h, undefined, true)).join("")}</div>
+          <div class="cos-section"><h3>Light Kits</h3>${LIGHTS.map((l) => item("light", l, l.under || l.roof || null)).join("")}</div>
+          <button class="btn mt" id="c-close">BACK</button>
+        </div>`);
+      this._all("[data-buy]").forEach((b) => b.onclick = () => {
+        const [k, id] = b.dataset.buy.split(":");
+        const list = k === "skin" ? SKINS : k === "horn" ? HORNS : LIGHTS;
+        if (onBuy(k, list.find((x) => x.id === id))) render();
+      });
+      this._all("[data-equip]").forEach((b) => b.onclick = () => {
+        const [k, id] = b.dataset.equip.split(":");
+        onEquip(k, id); render();
+      });
+      this._all("[data-prev]").forEach((b) => b.onclick = () => onPreviewHorn(HORNS.find((x) => x.id === b.dataset.prev)));
+      this._$("#c-close").onclick = onClose;
+    };
+    render();
+  }
+
+  // ---------- Achievements + records ----------
+  achievements({ profile, onClose }) {
+    const unlocked = profile.data.achievements || [];
+    const best = profile.data.best || { level: 0, totalEarned: 0, jobsDone: 0 };
+    const rows = ACHIEVEMENTS.map((a) => {
+      const done = unlocked.includes(a.id);
+      return `<div class="ach-row">
+        <div class="ach-ic ${done ? "done" : "todo"}">${done ? "✓" : "🔒"}</div>
+        <div class="ach-txt"><div class="n">${a.name}</div><div class="d">${a.desc}</div></div>
+        <div style="color:var(--accent);font-weight:800">$${a.reward}</div>
+      </div>`;
+    }).join("");
+    this._show(`
+      <div class="panel">
+        <h2>Achievements <span class="tag">${unlocked.length}/${ACHIEVEMENTS.length}</span></h2>
+        <div class="card">
+          <div class="results-stat"><span>Best Driver Level</span><b>${best.level}</b></div>
+          <div class="results-stat"><span>Most Earned</span><b>$${(best.totalEarned || 0).toLocaleString()}</b></div>
+          <div class="results-stat"><span>Total Jobs</span><b>${best.jobsDone}</b></div>
+        </div>
+        <div class="mt">${rows}</div>
+        <button class="btn mt" id="a-close">BACK</button>
+      </div>`);
+    this._$("#a-close").onclick = onClose;
   }
 
   // ---------- Job offer ----------
@@ -139,7 +220,10 @@ export class Screens {
   }
 
   // ---------- Results ----------
-  results({ success, job, reward, xp, perfect, leveledUp, canDouble, onContinue, onDouble }) {
+  results({ success, job, reward, xp, perfect, leveledUp, canDouble, achievements = [], onContinue, onDouble }) {
+    const achHtml = achievements.length
+      ? `<div class="card" style="text-align:left">${achievements.map((a) => `<div class="results-stat"><span>🏆 ${a.name}</span><b style="color:var(--good)">+$${a.reward}</b></div>`).join("")}</div>`
+      : "";
     this._show(`
       <div class="panel center">
         <h2 style="color:${success ? "var(--good)" : "var(--bad)"}">${success ? "Delivery Complete!" : "Job Failed"}</h2>
@@ -150,6 +234,7 @@ export class Screens {
           ${perfect && success ? `<div class="results-stat"><span>Perfect run bonus</span><b style="color:var(--good)">✓</b></div>` : ""}
           ${leveledUp ? `<div class="results-stat"><span>LEVEL UP!</span><b style="color:var(--accent)">Driver Lv up</b></div>` : ""}
         </div>
+        ${achHtml}
         ${success && canDouble ? `<button class="btn reward" id="r-double">▶ WATCH AD — DOUBLE PAYOUT</button>` : ""}
         <button class="btn" id="r-continue">CONTINUE</button>
       </div>`);

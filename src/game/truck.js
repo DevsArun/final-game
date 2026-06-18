@@ -13,8 +13,10 @@ export class Truck {
     this.reset([0, 0, 0], 0);
   }
 
-  setTruck(gl, truckDef) {
-    const model = buildTruck(truckDef.colors);
+  setTruck(gl, truckDef, cabOverride) {
+    const colors = Object.assign({}, truckDef.colors);
+    if (cabOverride) colors.cab = cabOverride;
+    const model = buildTruck(colors);
     this.bodyMesh = new Mesh(gl, model.body);
     this.wheelMesh = new Mesh(gl, buildWheel(model.wheelRadius));
     this.wheels = model.wheels;
@@ -39,6 +41,9 @@ export class Truck {
     this.steerAngle = 0;
     this.airborne = false;
     this.vy = 0;
+    this.burstWheel = -1;          // index of a burst tyre, or -1
+    this.handlingBias = 0;         // steering pull (e.g. from tyre burst)
+    this._model = mat4.identity();
   }
 
   get speedKMH() { return Math.abs(this.speed) * KMH_PER_MS; }
@@ -74,7 +79,7 @@ export class Truck {
     const dir = this.speed >= 0 ? 1 : -1;
     let turn = this.steerAngle * this.steerRate * speedFactor * dir;
     if (handbrake) turn *= 1.8; // sharper drift turn
-    this.heading += turn * dt * (Math.abs(this.speed) > 0.2 ? 1 : 0);
+    this.heading += (turn + this.handlingBias * speedFactor) * dt * (Math.abs(this.speed) > 0.2 ? 1 : 0);
 
     // ---- Move ----
     const fwd = [Math.sin(this.heading), Math.cos(this.heading)];
@@ -127,15 +132,39 @@ export class Truck {
       [this.pitch || 0, this.heading, this.roll || 0],
       [1, 1, 1]
     );
+    this._model = model;
     renderer.draw(this.bodyMesh, model, { tint });
 
     // wheels
-    for (const w of this.wheels) {
+    for (let i = 0; i < this.wheels.length; i++) {
+      const w = this.wheels[i];
       const steer = w.steer ? this.steerAngle * 0.6 : 0;
-      const local = mat4.compose(w.pos, [0, steer, 0], [1, 1, 1]);
+      const flat = i === this.burstWheel ? [1, 0.4, 1] : [1, 1, 1];
+      const local = mat4.multiply(
+        mat4.compose(w.pos, [0, steer, 0], [1, 1, 1]),
+        mat4.scaling(flat[0], flat[1], flat[2])
+      );
       const spin = mat4.rotationX(-this.wheelSpin);
       const wm = mat4.multiply(mat4.multiply(model, local), spin);
       renderer.draw(this.wheelMesh, wm, { tint });
     }
+  }
+
+  modelMatrix() {
+    return mat4.compose(
+      [this.pos[0], this.pos[1], this.pos[2]],
+      [this.pitch || 0, this.heading, this.roll || 0],
+      [1, 1, 1]
+    );
+  }
+
+  // Transform a truck-local point into world space (ignores pitch/roll).
+  localToWorld(p) {
+    const c = Math.cos(this.heading), s = Math.sin(this.heading);
+    return [
+      this.pos[0] + (c * p[0] + s * p[2]),
+      this.pos[1] + p[1],
+      this.pos[2] + (-s * p[0] + c * p[2]),
+    ];
   }
 }

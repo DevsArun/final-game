@@ -15,6 +15,7 @@ export class HUD {
       gear: document.getElementById("gear-val"),
       touch: document.getElementById("touch-controls"),
       toast: document.getElementById("toast"),
+      clock: document.getElementById("hud-clock"),
     };
     this._toastTimer = null;
   }
@@ -63,6 +64,14 @@ export class HUD {
   setSpeed(kmh, reversing) {
     this.el.speed.textContent = Math.round(kmh);
     this.el.gear.textContent = reversing ? "R" : "D";
+  }
+
+  setClock(env) {
+    if (!this.el.clock) return;
+    const h = Math.floor(env.time * 24);
+    const m = Math.floor(((env.time * 24) % 1) * 60);
+    const icon = env.isRaining() ? "🌧️" : env.isFoggy() ? "🌫️" : env.isNight() ? "🌙" : "☀️";
+    this.el.clock.textContent = `${icon} ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
   }
 
   toast(msg, ms = 2200) {

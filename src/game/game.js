@@ -3,15 +3,21 @@ import { Renderer } from "../core/gl.js";
 import { Input } from "../core/input.js";
 import { Loop } from "../core/loop.js";
 import { mat4, clamp, vec3 } from "../core/math.js";
-import { Mesh } from "../core/mesh.js";
+import { Mesh, box } from "../core/mesh.js";
 
 import { World } from "./world.js";
 import { Truck } from "./truck.js";
 import { ChaseCamera } from "./camera.js";
-import { buildMarker, buildArrow } from "./models.js";
+import { Traffic } from "./traffic.js";
+import { Particles } from "./particles.js";
+import { buildMarker, buildArrow, buildBeam, buildUnderglow } from "./models.js";
 
 import { Profile } from "../systems/profile.js";
 import { MissionManager } from "../systems/missions.js";
+import { Environment } from "../systems/environment.js";
+import { checkAchievements, updateRecords } from "../systems/achievements.js";
+import { Sfx } from "../audio/audio.js";
+import { getSkin, getHorn, getLight } from "../config/cosmetics.js";
 import { HUD } from "../ui/hud.js";
 import { Screens } from "../ui/screens.js";
 import { getMap } from "../config/maps.js";
@@ -26,78 +32,103 @@ export class Game {
     this.time = 0;
     this.jobsSinceAd = 0;
     this.offerCooldown = 0;
+    this.shake = 0;
+    this.potholeCd = 0;
+    this.breakerCd = 0;
+    this.honkCd = 0;
+    this.smokeTimer = 0;
+    this.cpFined = {};
   }
 
   async boot() {
-    const canvas = document.getElementById("gl");
-    this.renderer = new Renderer(canvas);
+    const gl0 = document.getElementById("gl");
+    this.renderer = new Renderer(gl0);
+    const gl = this.renderer.gl;
     this.input = new Input();
     this.hud = new HUD();
     this.screens = new Screens();
+    this.sfx = new Sfx();
 
-    // profile / save
     this.profile = new Profile(this.platform);
     await this.profile.load();
+    this.sfx.setMuted(this.profile.data.settings.muted);
 
-    // map + world
     this.map = getMap("harbor_city");
-    this.renderer.setEnvironment(this.map.env);
-    this.world = new World(this.renderer.gl, this.map);
+    this.world = new World(gl, this.map);
     this.mission = new MissionManager(this.world);
     this.depot = this.world.hubs.find((h) => h.name === DEPOT_NAME) || this.world.hubs[0];
 
-    // truck
-    this.truck = new Truck(this.renderer.gl, this.profile.selectedTruckDef, this.profile.selectedStats);
+    this.env = new Environment();
+    this.traffic = new Traffic(gl, this.world);
+    this.particles = new Particles(gl);
+
+    this.truck = new Truck(gl, this.profile.selectedTruckDef, this.profile.selectedStats);
+    this.applySkin();
     this.truck.reset(this.world.spawn, Math.PI);
 
-    // camera
     this.cam = new ChaseCamera();
     this.cam.snap(this.truck.pos, this.truck.heading);
 
-    // markers
-    this.markerPickup = new Mesh(this.renderer.gl, buildMarker([0.2, 0.85, 1.0]));
-    this.markerDeliver = new Mesh(this.renderer.gl, buildMarker([0.25, 1.0, 0.45]));
-    this.markerDepot = new Mesh(this.renderer.gl, buildMarker([1.0, 0.78, 0.1]));
-    this.arrow = new Mesh(this.renderer.gl, buildArrow([1, 1, 1]));
+    // markers + cosmetic meshes
+    this.markerPickup = new Mesh(gl, buildMarker([0.2, 0.85, 1.0]));
+    this.markerDeliver = new Mesh(gl, buildMarker([0.25, 1.0, 0.45]));
+    this.markerDepot = new Mesh(gl, buildMarker([1.0, 0.78, 0.1]));
+    this.arrow = new Mesh(gl, buildArrow([1, 1, 1]));
+    this.beamMesh = new Mesh(gl, buildBeam());
+    this.underglowMesh = new Mesh(gl, buildUnderglow());
+    this.roofbarMesh = new Mesh(gl, box(2.0, 0.2, 0.5, [1, 1, 1], [0, 3.8, 4.05]));
 
-    // vehicle state
     this._initVehicleState();
 
-    // input bindings
+    // input
     this.hud.el.touch && this.input.bindTouchButtons(this.hud.el.touch);
     document.getElementById("btn-pause").onclick = () => this.togglePause();
+    const honkBtn = document.getElementById("btn-honk");
+    if (honkBtn) {
+      honkBtn.onclick = () => this.honk();
+      honkBtn.ontouchstart = (e) => { e.preventDefault(); this.honk(); };
+    }
+    const resume = () => this.sfx.resume();
+    window.addEventListener("keydown", resume, { once: true });
+    window.addEventListener("pointerdown", resume, { once: true });
     window.addEventListener("resize", () => this.renderer.resize());
     this.renderer.resize();
 
-    // loop
     this.loop = new Loop((dt) => this.update(dt));
     this.loop.start();
 
-    // platform: loading done
     this.platform.loadingFinished();
     document.getElementById("loading").classList.add("hidden");
-
     this.gotoMenu();
+  }
+
+  applySkin() {
+    const cab = getSkin(this.profile.selectedSkin).cab;
+    this.truck.setTruck(this.renderer.gl, this.profile.selectedTruckDef, cab);
   }
 
   _initVehicleState() {
     const s = this.profile.selectedStats;
-    this.maxFuel = s.fuel;
-    this.fuel = s.fuel;
-    this.maxHealth = s.durability;
-    this.health = s.durability;
+    this.maxFuel = s.fuel; this.fuel = s.fuel;
+    this.maxHealth = s.durability; this.health = s.durability;
   }
 
-  // Rebuild the truck after equipping/upgrading.
   rebuildTruck() {
-    this.truck.setTruck(this.renderer.gl, this.profile.selectedTruckDef);
+    this.applySkin();
     this.truck.applyStats(this.profile.selectedStats);
     this._initVehicleState();
     this.truck.reset(this.world.spawn, Math.PI);
     this.cam.snap(this.truck.pos, this.truck.heading);
   }
 
-  // ---------------- State transitions ----------------
+  honk() {
+    if (this.honkCd > 0) return;
+    this.honkCd = 0.5;
+    this.sfx.resume();
+    this.sfx.horn(getHorn(this.profile.selectedHorn));
+  }
+
+  // ---------------- Menus ----------------
   gotoMenu() {
     this.state = STATE.MENU;
     this.mission.cancel();
@@ -107,8 +138,17 @@ export class Game {
     this.screens.mainMenu({
       profile: this.profile,
       mapName: this.map.name,
+      muted: this.profile.data.settings.muted,
       onPlay: () => this.startDriving(),
       onGarage: () => this.openGarage(() => this.gotoMenu()),
+      onCosmetics: () => this.openCosmetics(() => this.gotoMenu()),
+      onAchievements: () => this.openAchievements(() => this.gotoMenu()),
+      onToggleMute: () => {
+        this.profile.data.settings.muted = !this.profile.data.settings.muted;
+        this.sfx.setMuted(this.profile.data.settings.muted);
+        this.profile.save();
+        this.gotoMenu();
+      },
       onDaily: () => {
         const r = this.profile.claimDaily();
         this.profile.save();
@@ -125,25 +165,46 @@ export class Game {
       onSelect: (id) => { this.profile.select(id); this.rebuildTruck(); this.profile.save(); },
       onBuyTruck: (id) => {
         const ok = this.profile.buyTruck(id);
-        if (ok) { this.rebuildTruck(); this.profile.save(); this.hud.toast("New truck purchased!"); }
+        if (ok) { this.rebuildTruck(); this.profile.save(); this.sfx.cash(); this.hud.toast("New truck purchased!"); }
         else this.hud.toast("Not enough cash");
         return ok;
       },
       onBuyUpgrade: (upId) => {
         const ok = this.profile.buyUpgrade(this.profile.data.selectedTruck, upId);
-        if (ok) { this.truck.applyStats(this.profile.selectedStats); this._initVehicleState(); this.profile.save(); }
+        if (ok) { this.truck.applyStats(this.profile.selectedStats); this._initVehicleState(); this.sfx.cash(); this.profile.save(); }
         else this.hud.toast("Not enough cash");
         return ok;
       },
+      onCosmetics: () => this.openCosmetics(onClose),
       onClose,
     });
+  }
+
+  openCosmetics(onClose) {
+    this.state = STATE.MODAL;
+    this.screens.cosmetics({
+      profile: this.profile,
+      onBuy: (kind, item) => {
+        const ok = this.profile.buyCosmetic(kind, item);
+        if (ok) { if (kind === "skin") this.applySkin(); this.sfx.cash(); this.profile.save(); }
+        else this.hud.toast("Not enough cash");
+        return ok;
+      },
+      onEquip: (kind, id) => { this.profile.equipCosmetic(kind, id); if (kind === "skin") this.applySkin(); this.profile.save(); },
+      onPreviewHorn: (item) => { this.sfx.resume(); this.sfx.horn(item); },
+      onClose,
+    });
+  }
+
+  openAchievements(onClose) {
+    this.state = STATE.MODAL;
+    this.screens.achievements({ profile: this.profile, onClose });
   }
 
   startDriving() {
     this.state = STATE.DRIVING;
     this.truck.reset(this.world.spawn, Math.PI);
-    this.fuel = this.maxFuel;
-    this.health = this.maxHealth;
+    this.fuel = this.maxFuel; this.health = this.maxHealth;
     this.cam.snap(this.truck.pos, this.truck.heading);
     this.screens.hide();
     this.hud.show(this.platform.isMobile());
@@ -155,22 +216,17 @@ export class Game {
     if (this.state === STATE.DRIVING) {
       this.state = STATE.PAUSED;
       this.platform.gameplayStop();
-      this.screens.pause({
-        onResume: () => { this.screens.hide(); this.state = STATE.DRIVING; this.platform.gameplayStart(); },
-        onGarage: () => this.openGarage(() => this.togglePauseBack()),
-        onMenu: () => this.gotoMenu(),
-      });
+      this._pauseMenu();
     } else if (this.state === STATE.PAUSED) {
       this.screens.hide();
       this.state = STATE.DRIVING;
       this.platform.gameplayStart();
     }
   }
-  togglePauseBack() {
-    this.state = STATE.PAUSED;
+  _pauseMenu() {
     this.screens.pause({
       onResume: () => { this.screens.hide(); this.state = STATE.DRIVING; this.platform.gameplayStart(); },
-      onGarage: () => this.openGarage(() => this.togglePauseBack()),
+      onGarage: () => this.openGarage(() => this._pauseMenu()),
       onMenu: () => this.gotoMenu(),
     });
   }
@@ -186,43 +242,45 @@ export class Game {
         this.state = STATE.DRIVING;
         this.hud.toast(`Job accepted — head to ${offer.pickup.name}`);
       },
-      onDecline: () => { this.showJobOffer(); },
+      onDecline: () => this.showJobOffer(),
     });
   }
 
   // ---------------- Mission events ----------------
-  onPicked() {
-    this.hud.toast("Cargo loaded! Deliver it now.");
-  }
+  onPicked() { this.hud.toast("Cargo loaded! Deliver it now."); }
 
   async onDelivered() {
     const job = this.mission.active;
     this.state = STATE.MODAL;
     this.platform.gameplayStop();
     let reward = job.reward;
-    let xp = job.xp;
-    if (job.perfect) { reward = Math.round(reward * 1.25); }
+    const xp = job.xp;
+    if (job.perfect) reward = Math.round(reward * 1.25);
 
     this.profile.addMoney(reward);
     const leveledUp = this.profile.addXP(xp);
-    this.profile.data.stats.jobsDone++;
-    this.profile.data.stats.distanceKm += job.distance / 1000;
-    if (job.perfect) this.profile.data.stats.perfectJobs++;
-    this.profile.save();
+    const st = this.profile.data.stats;
+    st.jobsDone++;
+    st.distanceKm += job.distance / 1000;
+    if (job.perfect) st.perfectJobs++;
+    if (this.env.isNight()) st.nightJobs++;
+    if (this.env.isRaining()) st.rainJobs++;
+    this.sfx.cash();
+    if (leveledUp) this.sfx.level();
 
+    const fresh = checkAchievements(this.profile);
+    updateRecords(this.profile, this.platform);
+    this.profile.save();
     this.jobsSinceAd++;
     this.mission.cancel();
 
     this.screens.results({
       success: true, job, reward, xp, perfect: job.perfect, leveledUp,
+      achievements: fresh,
       canDouble: true,
       onDouble: async () => {
         const granted = await this.platform.showRewardedAd();
-        if (granted) {
-          this.profile.addMoney(reward); // doubles total
-          this.profile.save();
-          this.hud.toast(`Payout doubled! +$${reward}`);
-        }
+        if (granted) { this.profile.addMoney(reward); this.profile.save(); this.sfx.cash(); this.hud.toast(`Payout doubled! +$${reward}`); }
         this.afterResults();
       },
       onContinue: () => this.afterResults(),
@@ -234,17 +292,16 @@ export class Game {
     this.state = STATE.MODAL;
     this.platform.gameplayStop();
     this.mission.cancel();
-    this.screens.results({
-      success: false, job, reward: 0, xp: 5, perfect: false, leveledUp: false,
-      canDouble: false,
-      onContinue: () => this.afterResults(),
-    });
     this.profile.addXP(5);
     this.profile.save();
+    this.screens.results({
+      success: false, job, reward: 0, xp: 5, perfect: false, leveledUp: false,
+      achievements: [], canDouble: false,
+      onContinue: () => this.afterResults(),
+    });
   }
 
   async afterResults() {
-    // occasional interstitial at a natural break
     if (this.jobsSinceAd >= 3) {
       this.jobsSinceAd = 0;
       this.platform.happyTime();
@@ -256,18 +313,14 @@ export class Game {
     this.hud.toast("Return to Central Depot (yellow) for a new job");
   }
 
-  // ---------------- Stranded handlers ----------------
+  // ---------------- Stranded ----------------
   strandedFuel() {
     this.state = STATE.MODAL;
     this.platform.gameplayStop();
     this.screens.stranded({
-      title: "Out of Fuel",
-      msg: "Your tank is empty. Watch an ad for a free refuel.",
+      title: "Out of Fuel", msg: "Your tank is empty. Watch an ad for a free refuel.",
       adLabel: "▶ WATCH AD — FREE REFUEL",
-      onWatchAd: async () => {
-        const ok = await this.platform.showRewardedAd();
-        if (ok) { this.fuel = this.maxFuel; this.resumeFromStrand(); }
-      },
+      onWatchAd: async () => { const ok = await this.platform.showRewardedAd(); if (ok) { this.fuel = this.maxFuel; this.resumeFromStrand(); } },
       onPay: this.profile.canAfford(150) ? () => { this.profile.spend(150); this.fuel = this.maxFuel; this.profile.save(); this.resumeFromStrand(); } : null,
       payCost: 150,
       onMenu: () => this.gotoMenu(),
@@ -278,17 +331,19 @@ export class Game {
     this.state = STATE.MODAL;
     this.platform.gameplayStop();
     this.screens.stranded({
-      title: "Engine Wrecked",
-      msg: "Too much damage — the truck broke down. Repair to continue.",
+      title: "Engine Wrecked", msg: "Too much damage — the truck broke down. Repair to continue.",
       adLabel: "▶ WATCH AD — FREE REPAIR",
-      onWatchAd: async () => {
-        const ok = await this.platform.showRewardedAd();
-        if (ok) { this.health = this.maxHealth; this.resumeFromStrand(); }
-      },
-      onPay: this.profile.canAfford(200) ? () => { this.profile.spend(200); this.health = this.maxHealth; this.profile.save(); this.resumeFromStrand(); } : null,
+      onWatchAd: async () => { const ok = await this.platform.showRewardedAd(); if (ok) { this.repairAll(); this.resumeFromStrand(); } },
+      onPay: this.profile.canAfford(200) ? () => { this.profile.spend(200); this.repairAll(); this.profile.save(); this.resumeFromStrand(); } : null,
       payCost: 200,
       onMenu: () => this.gotoMenu(),
     });
+  }
+
+  repairAll() {
+    this.health = this.maxHealth;
+    this.truck.burstWheel = -1;
+    this.truck.handlingBias = 0;
   }
 
   resumeFromStrand() {
@@ -298,53 +353,122 @@ export class Game {
     this.platform.gameplayStart();
   }
 
+  burstTyre() {
+    if (this.truck.burstWheel >= 0) return;
+    const idx = 2 + Math.floor(Math.random() * (this.truck.wheels.length - 2));
+    this.truck.burstWheel = idx;
+    this.truck.handlingBias = (Math.random() < 0.5 ? -1 : 1) * 0.55;
+    this.health = clamp(this.health - 12, 0, this.maxHealth);
+    this.mission.registerDamage(12);
+    this.particles.sparks(this.truck.localToWorld(this.truck.wheels[idx].pos), 14);
+    this.sfx.crash();
+    this.shake = 0.6;
+    this.hud.toast("Tyre burst! Get to a fuel station to fix it");
+  }
+
   // ---------------- Update ----------------
   update(dt) {
     this.time += dt;
-    this.renderer.resize();
+    this.env.update(dt);
+    this.particles.update(dt);
+    if (this.honkCd > 0) this.honkCd -= dt;
     if (this.offerCooldown > 0) this.offerCooldown -= dt;
+    if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 2.5);
 
-    if (this.state === STATE.DRIVING) {
-      this.simulate(dt);
-    } else {
-      // showcase camera idle spin around the truck
-      this.idleCamera(dt);
-    }
+    if (this.state === STATE.DRIVING) this.simulate(dt);
+    else this.idleCamera(dt);
+
     this.render();
   }
 
   idleCamera(dt) {
-    const angle = this.time * 0.25;
-    const r = 22;
+    const angle = this.time * 0.2;
+    const r = 26;
     this.cam.pos[0] = this.truck.pos[0] + Math.sin(angle) * r;
-    this.cam.pos[1] = this.truck.pos[1] + 9;
+    this.cam.pos[1] = this.truck.pos[1] + 11;
     this.cam.pos[2] = this.truck.pos[2] + Math.cos(angle) * r;
-    this.cam.look = [this.truck.pos[0], this.truck.pos[1] + 2, this.truck.pos[2]];
+    this.cam.look = [this.truck.pos[0], this.truck.pos[1] + 2.5, this.truck.pos[2]];
   }
 
   simulate(dt) {
     const input = this.input;
-    if (input.pressed("Escape") || input.pressed("p")) { this.togglePause(); return; }
+    if (input.pressed("Escape") || input.pressed("p") || input.pressed("P")) { this.togglePause(); return; }
     if (input.pressed("c") || input.pressed("C")) this.cam.toggle();
+    if (input.pressed("h") || input.pressed("H")) this.honk();
 
-    // performance penalty from damage
+    // rain reduces grip
+    this.truck.steerRate = this.profile.selectedStats.handling * this.env.grip;
+
+    // damage + tyre-burst performance penalties
     const healthFrac = this.health / this.maxHealth;
     const broken = this.health <= 0;
-    const lowHealthMul = healthFrac < 0.25 ? 0.6 + healthFrac * 1.6 : 1; // up to 40% slower
+    let speedMul = healthFrac < 0.25 ? 0.6 + healthFrac * 1.6 : 1;
+    if (this.truck.burstWheel >= 0) speedMul = Math.min(speedMul, 0.55);
     const prevMax = this.truck.maxSpeedMS;
-    this.truck.maxSpeedMS = prevMax * (broken ? 0 : lowHealthMul);
-
+    this.truck.maxSpeedMS = prevMax * (broken ? 0 : speedMul);
     const canMove = this.fuel > 0 && !broken;
     const res = this.truck.update(dt, input, this.world, canMove);
-    this.truck.maxSpeedMS = prevMax; // restore base for next frame
+    this.truck.maxSpeedMS = prevMax;
 
-    // damage from collisions
-    if (res.hitImpulse > 4) {
-      const dmg = (res.hitImpulse - 4) * 1.6;
+    // traffic
+    this.traffic.update(dt, this.truck.pos);
+    const trafficImpulse = this.traffic.resolve(this.truck);
+    const impulse = Math.max(res.hitImpulse, trafficImpulse);
+    if (impulse > 4) {
+      const dmg = (impulse - 4) * 1.6;
       this.health = clamp(this.health - dmg, 0, this.maxHealth);
       this.mission.registerDamage(dmg);
-      if (dmg > 6) this.hud.toast("Crash! Truck damaged");
+      if (dmg > 6) { this.hud.toast("Crash! Truck damaged"); this.sfx.crash(); this.shake = Math.min(0.7, dmg * 0.05); }
     }
+
+    // potholes
+    if (this.potholeCd > 0) this.potholeCd -= dt;
+    if (this.potholeCd <= 0) {
+      for (const p of this.world.potholes) {
+        if (vec3.dist2D(this.truck.pos, [p.x, 0, p.z]) < p.r + this.truck.dims.halfWidth) {
+          this.potholeCd = 0.7;
+          const kmh = this.truck.speedKMH;
+          if (kmh > 25) {
+            this.shake = Math.min(0.6, kmh * 0.006);
+            this.truck.speed *= 0.8;
+            this.health = clamp(this.health - kmh * 0.06, 0, this.maxHealth);
+            this.particles.sparks(this.truck.localToWorld([0, 0.2, -3]), 4);
+            if (kmh > 55 && this.truck.burstWheel < 0 && Math.random() < 0.3) this.burstTyre();
+          }
+          break;
+        }
+      }
+    }
+
+    // speed breakers
+    if (this.breakerCd > 0) this.breakerCd -= dt;
+    if (this.breakerCd <= 0) {
+      for (const sb of this.world.speedBreakers) {
+        if (vec3.dist2D(this.truck.pos, [sb.x, 0, sb.z]) < 3.2) {
+          this.breakerCd = 0.6;
+          if (this.truck.speedKMH > 35) { this.shake = 0.35; this.truck.speed *= 0.7; this.hud.toast("Speed breaker!"); }
+          else this.truck.speed *= 0.9;
+          break;
+        }
+      }
+    }
+
+    // police checkpoints (fine if too fast)
+    this.world.checkpoints.forEach((cp, i) => {
+      const inside = vec3.dist2D(this.truck.pos, [cp.x, 0, cp.z]) < cp.r;
+      if (inside) {
+        if (this.truck.speedKMH > cp.limit && !this.cpFined[i]) {
+          this.cpFined[i] = true;
+          const fine = 120;
+          this.profile.data.money = Math.max(0, this.profile.money - fine);
+          this.profile.save();
+          this.sfx.crash();
+          this.hud.toast(`Police fine! Over speed limit (-$${fine})`);
+        }
+      } else if (this.cpFined[i]) {
+        this.cpFined[i] = false;
+      }
+    });
 
     // fuel consumption
     const speedFrac = Math.abs(this.truck.speed) / Math.max(this.truck.maxSpeedMS, 1);
@@ -354,19 +478,37 @@ export class Game {
       this.fuel = clamp(this.fuel - burn, 0, this.maxFuel);
     }
 
-    // fuel station: refuel + repair while inside
+    // fuel station: refuel + repair (+ fix tyre)
     for (const z of this.world.fuelZones) {
       if (vec3.dist2D(this.truck.pos, [z.x, 0, z.z]) < z.r) {
         const before = this.fuel;
         this.fuel = clamp(this.fuel + 30 * dt, 0, this.maxFuel);
         this.health = clamp(this.health + 25 * dt, 0, this.maxHealth);
+        if (this.truck.burstWheel >= 0) { this.truck.burstWheel = -1; this.truck.handlingBias = 0; this.hud.toast("Tyre replaced"); }
         if (this.fuel > before && this.fuel >= this.maxFuel && before < this.maxFuel) this.hud.toast("Tank full");
       }
     }
 
-    this.cam.update(this.truck.pos, this.truck.heading, this.truck.speedKMH, dt);
+    // engine smoke when badly damaged
+    if (healthFrac < 0.35 || this.truck.burstWheel >= 0) {
+      this.smokeTimer -= dt;
+      if (this.smokeTimer <= 0) {
+        this.smokeTimer = 0.09;
+        this.particles.smoke(this.truck.localToWorld([1.36, 3.1, 2.85]));
+        this.particles.smoke(this.truck.localToWorld([-1.36, 3.1, 2.85]));
+      }
+    }
+    // rain splashes off the wheels
+    if (this.env.isRaining() && this.truck.speedKMH > 10 && Math.random() < 0.6) {
+      this.particles.splash(this.truck.localToWorld([(Math.random() - 0.5) * 2, 0.1, -2 + Math.random() * 4]));
+    }
 
-    // stranded checks
+    this.cam.update(this.truck.pos, this.truck.heading, this.truck.speedKMH, dt);
+    if (this.shake > 0) {
+      this.cam.look[0] += (Math.random() - 0.5) * this.shake * 2;
+      this.cam.look[1] += (Math.random() - 0.5) * this.shake * 2;
+    }
+
     if (this.fuel <= 0 && Math.abs(this.truck.speed) < 0.3) { this.strandedFuel(); return; }
     if (broken) { this.strandedBroken(); return; }
 
@@ -378,7 +520,6 @@ export class Game {
       else if (ev === "timeout") { this.onTimeout(); return; }
       this.hud.setDistance(this.mission.distanceToTarget(this.truck.pos));
     } else {
-      // near depot -> offer a job
       const dDepot = vec3.dist2D(this.truck.pos, this.depot.pos);
       this.hud.setDistance(dDepot);
       if (dDepot < 10 && this.offerCooldown <= 0 && Math.abs(this.truck.speed) < 4) {
@@ -388,23 +529,21 @@ export class Game {
       }
     }
 
-    // HUD
     this.hud.setProfile(this.profile);
     this.hud.setMission(this.mission);
     this.hud.setGauges(this.fuel / this.maxFuel, this.health / this.maxHealth);
     this.hud.setSpeed(this.truck.speedKMH, this.truck.speed < -0.2);
+    this.hud.setClock(this.env);
   }
 
   // ---------------- Render ----------------
   render() {
     const r = this.renderer;
+    this.env.apply(r);
     r.beginFrame(this.cam.viewMatrix(), 62);
 
-    // static world
     const I = mat4.identity();
     for (const m of this.world.staticMeshes) r.draw(m, I);
-
-    // instanced props
     for (const group of this.world.instanced) {
       for (const inst of group.instances) {
         const m = mat4.compose([inst.x, inst.y, inst.z], [0, inst.rot, 0], [inst.scale, inst.scale, inst.scale]);
@@ -412,26 +551,43 @@ export class Game {
       }
     }
 
-    // truck
+    this.traffic.render(r);
+
+    const model = this.truck.modelMatrix();
+    const light = getLight(this.profile.selectedLight);
+    if (light.under) {
+      const a = 0.4 + Math.sin(this.time * 6) * 0.12;
+      r.draw(this.underglowMesh, model, { tint: light.under, alpha: a });
+    }
+
     const flashing = this.health > 0 && (this.health / this.maxHealth) < 0.25 && Math.sin(this.time * 12) > 0;
     this.truck.render(r, { tint: flashing ? [1.4, 0.6, 0.6] : [1, 1, 1] });
 
-    // markers
+    if (light.roof) r.draw(this.roofbarMesh, model, { tint: light.roof });
+
+    // headlight beams at night / rain
+    if (this.env.isNight() || this.env.isRaining()) {
+      for (const x of [0.95, -0.95]) {
+        const m = mat4.multiply(model, mat4.translation(x, 0.95, 5.4));
+        r.draw(this.beamMesh, m, { tint: [1, 0.95, 0.7], alpha: 0.16 });
+      }
+    }
+
+    this.particles.render(r);
     this.renderMarkers();
+    this.env.renderOverlay();
   }
 
   renderMarkers() {
     const r = this.renderer;
     const pulse = 1 + Math.sin(this.time * 3) * 0.08;
     const bob = Math.sin(this.time * 2) * 0.6;
-
     const drawMarker = (mesh, pos) => {
       const m = mat4.compose([pos[0], 0.1, pos[2]], [0, this.time, 0], [pulse, 1, pulse]);
       r.draw(mesh, m, { alpha: 0.5 });
-      const am = mat4.compose([pos[0], 8 + bob, pos[2]], [0, this.time * 1.5, 0], [1, 1, 1]);
+      const am = mat4.compose([pos[0], 9 + bob, pos[2]], [0, this.time * 1.5, 0], [1.4, 1.4, 1.4]);
       r.draw(this.arrow, am, { alpha: 0.9 });
     };
-
     if (this.mission.active) {
       const isPickup = this.mission.active.phase === "pickup";
       drawMarker(isPickup ? this.markerPickup : this.markerDeliver, this.mission.target);

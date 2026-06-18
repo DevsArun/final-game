@@ -133,6 +133,45 @@ await new Promise((r) => setTimeout(r, 10));
 assert.ok(game.profile.money > moneyBefore, "delivery paid out (money " + moneyBefore + " -> " + game.profile.money + ")");
 console.log(`  ✓ pickup + delivery completed, balance ${moneyBefore} -> ${game.profile.money}`);
 
+// ---- new systems coverage ----
+assert.ok(game.traffic.vehicles.length > 0, "traffic spawned vehicles");
+game.traffic.update(1 / 60, game.truck.pos);
+game.traffic.resolve(game.truck);
+console.log(`  ✓ traffic: ${game.traffic.vehicles.length} vehicles update+resolve clean`);
+
+// weather + overlay
+game.env.setWeather("rain");
+assert.strictEqual(game.env.isRaining(), true, "rain weather active");
+game.env.apply(game.renderer);
+game.env.renderOverlay();
+game.env.setWeather("fog");
+game.env.apply(game.renderer);
+console.log("  ✓ environment: rain/fog apply + overlay clean");
+
+// engine smoke when damaged
+game.state = 2;
+game.health = game.maxHealth * 0.2;
+game.mission.accept(game.mission.generateOffer(game.profile));
+for (let i = 0; i < 30; i++) { game.input.keys["ArrowUp"] = true; game.update(1 / 60); }
+assert.ok(game.particles.list.length > 0, "smoke particles spawned when damaged");
+console.log(`  ✓ particles: ${game.particles.list.length} active (engine smoke)`);
+game.input.keys = {};
+game.health = game.maxHealth;
+
+// cosmetics buy + equip + apply skin
+game.profile.addMoney(5000);
+const boughtSkin = game.profile.buyCosmetic("skin", { id: "flame", price: 1000 });
+assert.ok(boughtSkin && game.profile.selectedSkin === "flame", "skin bought + equipped");
+game.applySkin();
+const boughtHorn = game.profile.buyCosmetic("horn", { id: "air", price: 500 });
+assert.ok(boughtHorn && game.profile.ownsCosmetic("horn", "air"), "horn bought");
+game.honk(); // must not throw without audio
+console.log("  ✓ cosmetics: skin/horn buy+equip+apply, honk clean");
+
+// achievements unlocked from stats
+assert.ok((game.profile.data.achievements || []).includes("first_job"), "first_job achievement unlocked after delivery");
+console.log(`  ✓ achievements: ${game.profile.data.achievements.length} unlocked`);
+
 // render a few idle (menu) frames without throwing
 game.state = 1; // MENU
 for (let i = 0; i < 10; i++) game.update(1 / 60);

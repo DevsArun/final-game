@@ -22,17 +22,35 @@ export class Profile {
       ownedTrucks: ["starter"],
       selectedTruck: "starter",
       upgrades: { starter: { engine: 0, tank: 0, armor: 0, tires: 0 } },
-      stats: { jobsDone: 0, distanceKm: 0, totalEarned: 0, perfectJobs: 0 },
+      stats: { jobsDone: 0, distanceKm: 0, totalEarned: 0, perfectJobs: 0, nightJobs: 0, rainJobs: 0 },
+      achievements: [],
+      best: { level: 0, totalEarned: 0, jobsDone: 0 },
+      cosmetics: {
+        ownedSkins: ["default"], skin: "default",
+        ownedHorns: ["stock"], horn: "stock",
+        ownedLights: ["none"], light: "none",
+      },
+      settings: { muted: false },
       lastDailyClaim: 0,
     };
+  }
+
+  _ensureShape() {
+    const d = this.data;
+    const def = this._default();
+    d.stats = Object.assign({}, def.stats, d.stats || {});
+    d.cosmetics = Object.assign({}, def.cosmetics, d.cosmetics || {});
+    d.settings = Object.assign({}, def.settings, d.settings || {});
+    d.achievements = d.achievements || [];
+    d.best = Object.assign({}, def.best, d.best || {});
+    d.upgrades = d.upgrades || {};
   }
 
   async load() {
     const saved = await this.platform.loadData(SAVE_KEY);
     if (saved && typeof saved === "object") {
       this.data = { ...this._default(), ...saved };
-      // make sure structures exist
-      this.data.upgrades = this.data.upgrades || {};
+      this._ensureShape();
       for (const id of this.data.ownedTrucks) {
         if (!this.data.upgrades[id]) this.data.upgrades[id] = { engine: 0, tank: 0, armor: 0, tires: 0 };
       }
@@ -96,6 +114,29 @@ export class Profile {
     this.data.upgrades[truckId][upId]++;
     return true;
   }
+
+  // ---- cosmetics ----
+  _cos() { return this.data.cosmetics; }
+  ownsCosmetic(kind, id) {
+    const c = this._cos();
+    const arr = kind === "skin" ? c.ownedSkins : kind === "horn" ? c.ownedHorns : c.ownedLights;
+    return arr.includes(id);
+  }
+  equipCosmetic(kind, id) {
+    const c = this._cos();
+    if (kind === "skin") c.skin = id; else if (kind === "horn") c.horn = id; else c.light = id;
+  }
+  buyCosmetic(kind, item) {
+    if (this.ownsCosmetic(kind, item.id)) { this.equipCosmetic(kind, item.id); return true; }
+    if (!this.spend(item.price)) return false;
+    const c = this._cos();
+    (kind === "skin" ? c.ownedSkins : kind === "horn" ? c.ownedHorns : c.ownedLights).push(item.id);
+    this.equipCosmetic(kind, item.id);
+    return true;
+  }
+  get selectedSkin() { return this._cos().skin; }
+  get selectedHorn() { return this._cos().horn; }
+  get selectedLight() { return this._cos().light; }
 
   // ---- daily reward ----
   dailyAvailable() {

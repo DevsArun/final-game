@@ -2,6 +2,7 @@
 import { Geometry, plane, box, Mesh } from "../core/mesh.js";
 import {
   buildBuilding, buildTree, buildLamp, buildCone, buildFuelStation,
+  buildBarrier, buildBooth, buildSpeedBreaker,
 } from "./models.js";
 
 function mulberry32(seed) {
@@ -24,6 +25,9 @@ export class World {
     this.instanced = [];      // { mesh, instances:[{x,y,z,rot,scale}] }
     this.obstacles = [];      // { x, z, hw, hd } AABB (top-down)
     this.fuelZones = [];      // { x, z, r }
+    this.potholes = [];       // { x, z, r }
+    this.speedBreakers = [];  // { x, z }
+    this.checkpoints = [];    // { x, z, r, limit }
     this.hubs = map.hubs.map((h) => ({ name: h.name, pos: [h.pos[0], 0, h.pos[1]] }));
     this.spawn = [map.spawn[0], 0, map.spawn[1]];
     this.half = map.half;
@@ -181,6 +185,53 @@ export class World {
       this.fuelZones.push({ x: fs[0], z: fs[1], r: 9 });
     }
     this.instanced.push({ mesh: fuelMesh, instances: fuelInst });
+
+    // --- India-theme: potholes / broken road patches ---
+    const potGeo = new Geometry();
+    const potColor = [0.05, 0.05, 0.06];
+    for (let i = 0; i < 46; i++) {
+      const onX = rng() < 0.5;
+      const line = (Math.floor(rng() * (extent * 2 / b)) * b) - extent;
+      const along = (rng() * 2 - 1) * (extent - 10);
+      const lane = (rng() < 0.5 ? 1 : -1) * (1 + rng() * 3);
+      const px = onX ? along : line + lane;
+      const pz = onX ? line + lane : along;
+      if (Math.hypot(px - this.spawn[0], pz - this.spawn[2]) < 22) continue;
+      const r = 1.0 + rng() * 1.1;
+      hquad(potGeo, px, pz, r * 2, r * 2, potColor, 0.045);
+      this.potholes.push({ x: px, z: pz, r });
+    }
+    this.staticMeshes.push(new Mesh(gl, potGeo));
+
+    // --- Speed breakers (bump strips) on roads ---
+    const sbMesh = new Mesh(gl, buildSpeedBreaker());
+    const sbInst = [];
+    for (let i = 0; i < 10; i++) {
+      const onX = rng() < 0.5;
+      const line = (Math.floor(rng() * (extent * 2 / b)) * b) - extent;
+      const along = (rng() * 2 - 1) * (extent - 30);
+      const px = onX ? along : line;
+      const pz = onX ? line : along;
+      if (Math.hypot(px - this.spawn[0], pz - this.spawn[2]) < 26) continue;
+      sbInst.push({ x: px, y: 0, z: pz, rot: onX ? Math.PI / 2 : 0, scale: 1 });
+      this.speedBreakers.push({ x: px, z: pz });
+    }
+    this.instanced.push({ mesh: sbMesh, instances: sbInst });
+
+    // --- Police checkpoints (slow-down zone, fine if too fast) ---
+    const boothMesh = new Mesh(gl, buildBooth());
+    const barrierMesh = new Mesh(gl, buildBarrier());
+    const boothInst = [];
+    const barrierInst = [];
+    const cpSpots = [[0, -120], [-120, 0], [120, 60]];
+    for (const [cx, cz] of cpSpots) {
+      const onX = Math.abs(cx % b) < 1; // checkpoint sits on a vertical (Z) road if x on a grid line
+      boothInst.push({ x: cx + 9, y: 0, z: cz, rot: 0, scale: 1 });
+      barrierInst.push({ x: cx, y: 0, z: cz - 7, rot: onX ? 0 : Math.PI / 2, scale: 0.8 });
+      this.checkpoints.push({ x: cx, z: cz, r: 13, limit: 38 });
+    }
+    this.instanced.push({ mesh: boothMesh, instances: boothInst });
+    this.instanced.push({ mesh: barrierMesh, instances: barrierInst });
   }
 }
 
