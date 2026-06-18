@@ -142,22 +142,34 @@ function cylZAt(r, len, color, x, y, z) {
 
 export function buildBuilding(w, h, d, color) {
   const g = new Geometry();
+  const dark = [color[0] * 0.7, color[1] * 0.7, color[2] * 0.75];
+  const win = [0.30, 0.40, 0.55];
+
+  // main mass + darker ground floor + roof parapet cap
   g.merge(box(w, h, d, color, [0, h / 2, 0]));
-  // roof cap
-  g.merge(box(w * 1.02, 0.4, d * 1.02, [color[0] * 0.7, color[1] * 0.7, color[2] * 0.75], [0, h + 0.2, 0]));
-  // windows (rows of dark quads) — front & back
-  const winColor = [0.25, 0.32, 0.42];
-  const cols = Math.max(2, Math.floor(w / 2));
-  const rows = Math.max(2, Math.floor(h / 3));
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const wx = -w / 2 + (c + 0.5) * (w / cols);
-      const wy = 1.5 + r * (h / rows);
-      if (wy > h - 1) continue;
-      g.merge(box(w / cols * 0.5, 1.0, 0.1, winColor, [wx, wy, d / 2 + 0.02]));
-      g.merge(box(w / cols * 0.5, 1.0, 0.1, winColor, [wx, wy, -d / 2 - 0.02]));
-    }
+  g.merge(box(w * 1.01, 2.0, d * 1.01, dark, [0, 1.0, 0]));        // ground floor
+  g.merge(box(w * 1.04, 0.5, d * 1.04, dark, [0, h + 0.22, 0]));   // parapet cap
+
+  // window bands per floor on all four faces
+  const floors = Math.max(2, Math.floor((h - 3) / 3.2));
+  for (let f = 0; f < floors; f++) {
+    const y = 3.0 + f * 3.2;
+    if (y > h - 1.2) break;
+    g.merge(box(w * 0.84, 1.3, 0.08, win, [0, y, d / 2 + 0.03]));
+    g.merge(box(w * 0.84, 1.3, 0.08, win, [0, y, -d / 2 - 0.03]));
+    g.merge(box(0.08, 1.3, d * 0.84, win, [w / 2 + 0.03, y, 0]));
+    g.merge(box(0.08, 1.3, d * 0.84, win, [-w / 2 - 0.03, y, 0]));
   }
+
+  // rooftop details (India flavour): water tank on legs + AC units
+  const rt = h + 0.5;
+  const legc = [0.25, 0.25, 0.28];
+  const tankX = w * 0.25, tankZ = d * 0.2;
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.merge(box(0.12, 0.8, 0.12, legc, [tankX + sx * 0.5, rt + 0.4, tankZ + sz * 0.4]));
+  g.merge(cylinderAt(0.75, 1.0, [0.2, 0.32, 0.55], tankX, rt + 0.8, tankZ));  // blue Sintex-style tank
+  g.merge(box(1.4, 0.7, 1.0, [0.7, 0.7, 0.74], [-w * 0.25, rt + 0.35, -d * 0.2])); // AC/box
+  g.merge(box(0.9, 0.5, 0.9, [0.6, 0.6, 0.64], [-w * 0.05, rt + 0.25, d * 0.28]));
+
   return g;
 }
 

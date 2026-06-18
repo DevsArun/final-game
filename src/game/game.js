@@ -53,7 +53,7 @@ export class Game {
     await this.profile.load();
     this.sfx.setMuted(this.profile.data.settings.muted);
 
-    this.map = getMap("harbor_city");
+    this.map = getMap("indus_city");
     this.world = new World(gl, this.map);
     this.mission = new MissionManager(this.world);
     this.depot = this.world.hubs.find((h) => h.name === DEPOT_NAME) || this.world.hubs[0];
@@ -396,8 +396,8 @@ export class Game {
     if (input.pressed("c") || input.pressed("C")) this.cam.toggle();
     if (input.pressed("h") || input.pressed("H")) this.honk();
 
-    // rain reduces grip
-    this.truck.steerRate = this.profile.selectedStats.handling * this.env.grip;
+    // rain reduces grip (looser, longer arcs)
+    this.truck.grip = this.profile.selectedStats.grip * this.env.grip;
 
     // damage + tyre-burst performance penalties
     const healthFrac = this.health / this.maxHealth;

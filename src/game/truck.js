@@ -39,6 +39,8 @@ export class Truck {
     this.lateral = 0;              // skid velocity
     this.wheelSpin = 0;
     this.steerAngle = 0;
+    this.steer = 0;
+    this.yawRate = 0;
     this.airborne = false;
     this.vy = 0;
     this.burstWheel = -1;          // index of a burst tyre, or -1
@@ -54,32 +56,40 @@ export class Truck {
     const brake = input.brake();
     const handbrake = input.handbrake();
 
-    // ---- Longitudinal ----
+    // ---- Longitudinal (smooth accel with easing near top speed) ----
     if (canMove) {
       if (throttle > 0) {
-        this.speed += this.accelForce * throttle * dt;
+        const ratio = clamp(this.speed / this.maxSpeedMS, 0, 1);
+        this.speed += this.accelForce * throttle * (1 - ratio * 0.82) * dt;
       } else if (brake > 0) {
-        if (this.speed > 0.5) this.speed -= this.accelForce * 1.6 * dt; // braking
-        else this.speed -= this.accelForce * 0.6 * dt;                  // reverse
+        if (this.speed > 0.4) this.speed -= this.accelForce * 1.7 * dt;       // brake
+        else this.speed -= this.accelForce * 0.55 * dt;                       // reverse
       } else {
-        // engine drag / rolling resistance
-        this.speed *= 1 - Math.min(0.8 * dt, 0.5);
-        if (Math.abs(this.speed) < 0.05) this.speed = 0;
+        this.speed -= this.speed * Math.min(0.7 * dt, 0.4);                   // coast
+        if (Math.abs(this.speed) < 0.04) this.speed = 0;
       }
     } else {
-      this.speed *= 1 - Math.min(2.5 * dt, 0.9);
+      this.speed -= this.speed * Math.min(2.5 * dt, 0.9);
     }
-    const reverseCap = -this.maxSpeedMS * 0.35;
-    this.speed = clamp(this.speed, reverseCap, this.maxSpeedMS);
+    this.speed = clamp(this.speed, -this.maxSpeedMS * 0.35, this.maxSpeedMS);
 
-    // ---- Steering (speed-sensitive) ----
-    const speedFactor = clamp(Math.abs(this.speed) / 6, 0, 1);
-    const targetSteer = steerInput * 0.5 * (1 - clamp(Math.abs(this.speed) / this.maxSpeedMS, 0, 0.55));
-    this.steerAngle += (targetSteer - this.steerAngle) * Math.min(10 * dt, 1);
+    // ---- Steering: smooth toward input, auto-center on release ----
+    const speedFrac = clamp(Math.abs(this.speed) / this.maxSpeedMS, 0, 1);
+    // tighter lock at low speed, much softer at high speed (stable highway feel)
+    const maxAngle = (0.5 - 0.36 * speedFrac) * clamp(this.steerRate / 1.5, 0.75, 1.3);
+    const rate = steerInput === 0 ? 4.0 : 2.4; // return-to-centre faster than turn-in
+    this.steer = (this.steer || 0) + (steerInput - (this.steer || 0)) * Math.min(rate * dt, 1);
+    const wheelAngle = this.steer * maxAngle;
+    this.steerAngle = wheelAngle; // drives front-wheel visual
+
+    // Bicycle model: yaw scales with forward speed -> no spin-in-place, real arcs
+    const L = 5.2; // wheelbase
     const dir = this.speed >= 0 ? 1 : -1;
-    let turn = this.steerAngle * this.steerRate * speedFactor * dir;
-    if (handbrake) turn *= 1.8; // sharper drift turn
-    this.heading += (turn + this.handlingBias * speedFactor) * dt * (Math.abs(this.speed) > 0.2 ? 1 : 0);
+    let yaw = (this.speed / L) * Math.tan(wheelAngle) * this.grip;
+    if (handbrake && Math.abs(this.speed) > 1) yaw *= 1.7; // drift
+    yaw = clamp(yaw, -1.3, 1.3);
+    this.yawRate = yaw;
+    this.heading += (yaw + this.handlingBias * speedFrac * dir) * dt;
 
     // ---- Move ----
     const fwd = [Math.sin(this.heading), Math.cos(this.heading)];
@@ -118,9 +128,11 @@ export class Truck {
     // wheel spin for visuals
     this.wheelSpin += (this.speed / 0.62) * dt;
 
-    // body roll/pitch for juice
-    this.roll = clamp(-this.steerAngle * speedFactor * 2.2, -0.18, 0.18);
-    this.pitch = clamp((throttle - brake) * -0.04 * speedFactor, -0.06, 0.06);
+    // body roll (lean into the turn) + pitch (squat under accel/brake)
+    const targetRoll = clamp(-this.yawRate * 0.10, -0.13, 0.13);
+    this.roll = (this.roll || 0) + (targetRoll - (this.roll || 0)) * Math.min(6 * dt, 1);
+    const targetPitch = clamp((throttle - brake) * -0.03 * (0.4 + speedFrac), -0.05, 0.05);
+    this.pitch = (this.pitch || 0) + (targetPitch - (this.pitch || 0)) * Math.min(6 * dt, 1);
 
     return { hitImpulse, speedKMH: this.speedKMH };
   }
